@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+, "components/collection-form/Form.tsx", "update-tanzeem.js", "app/dashboard/exam/[id]/page.jsx", "app/dashboard/page.jsx", "app/dashboard/create-exam/page.jsx", "app/dashboard/grade/[id]/page.jsx", "app/preview-exam/[id]/page.jsx", "app/take-exam/page.jsx", "app/take-exam/[id]/exam-window/page.jsx"  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
