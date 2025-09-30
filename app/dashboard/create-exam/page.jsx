@@ -33,6 +33,11 @@ export default function CreateExam() {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Bulk import states
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkQuestionType, setBulkQuestionType] = useState("mcq");
+
   const addQuestion = () => {
     setQuestions([
       ...questions,
@@ -45,6 +50,129 @@ export default function CreateExam() {
         points: 1,
       },
     ]);
+  };
+
+  const parseQuestionText = (text, questionIndex) => {
+    const lines = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (lines.length >= 2) {
+      // First line is the question
+      const questionText = lines[0];
+
+      // Remaining lines are options (take up to 4)
+      const options = lines.slice(1, 5);
+
+      // If we have at least 2 options, auto-populate
+      if (options.length >= 2) {
+        const updatedQuestions = [...questions];
+
+        // Pad options to 4 if needed
+        while (options.length < 4) {
+          options.push("");
+        }
+
+        updatedQuestions[questionIndex] = {
+          ...updatedQuestions[questionIndex],
+          text: questionText,
+          options: options,
+        };
+
+        setQuestions(updatedQuestions);
+        return;
+      }
+    }
+
+    // If parsing didn't work, just update the text normally
+    updateQuestion(questionIndex, "text", text);
+  };
+
+  // Bulk import parser
+  const parseBulkQuestions = (text, questionType) => {
+    // Split by asterisk or numbers followed by period/parenthesis
+    const questionBlocks = text
+      .split(/\n\s*[\*•\d+\.\)\]]\s*/)
+      .map((block) => block.trim())
+      .filter((block) => block.length > 0);
+
+    const newQuestions = [];
+
+    questionBlocks.forEach((block) => {
+      if (questionType === "mcq") {
+        // Split the block into lines
+        const lines = block
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+
+        if (lines.length >= 1) {
+          const questionText = lines[0];
+
+          // Extract options - look for lines starting with A), B), etc or just take all lines after first
+          const options = [];
+          for (let i = 1; i < lines.length && options.length < 4; i++) {
+            const line = lines[i];
+            // Remove common option prefixes like A), B), a), b), A., etc
+            const cleanedOption = line
+              .replace(/^[A-Da-d][\.\)\]\:]?\s*/, "")
+              .trim();
+            if (cleanedOption) {
+              options.push(cleanedOption);
+            }
+          }
+
+          // Ensure we have 4 options
+          while (options.length < 4) {
+            options.push("");
+          }
+
+          newQuestions.push({
+            id: Date.now().toString() + Math.random(),
+            type: "mcq",
+            text: questionText,
+            options: options.slice(0, 4),
+            correctOption: 0,
+            points: 1,
+          });
+        }
+      } else if (questionType === "long") {
+        // For long answer, just take the whole block as the question
+        if (block.trim()) {
+          newQuestions.push({
+            id: Date.now().toString() + Math.random(),
+            type: "long",
+            text: block.trim(),
+            options: [],
+            points: 1,
+          });
+        }
+      }
+    });
+
+    return newQuestions;
+  };
+
+  const handleBulkImport = () => {
+    if (!bulkText.trim()) {
+      alert("Please paste some questions");
+      return;
+    }
+
+    const parsedQuestions = parseBulkQuestions(bulkText, bulkQuestionType);
+
+    if (parsedQuestions.length === 0) {
+      alert(
+        "No valid questions found. Make sure each question starts with * or a number."
+      );
+      return;
+    }
+
+    setQuestions([...questions, ...parsedQuestions]);
+    setBulkText("");
+    setShowBulkImport(false);
+    alert(`Successfully imported ${parsedQuestions.length} question(s)!`);
   };
 
   const updateQuestion = (index, field, value) => {
@@ -83,6 +211,17 @@ export default function CreateExam() {
 
     updatedQuestions[questionIndex] = currentQuestion;
     setQuestions(updatedQuestions);
+  };
+
+  const handleQuestionTextChange = (questionIndex, value) => {
+    const question = questions[questionIndex];
+
+    // Only auto-parse for MCQ questions
+    if (question.type === "mcq") {
+      parseQuestionText(value, questionIndex);
+    } else {
+      updateQuestion(questionIndex, "text", value);
+    }
   };
 
   const saveExam = async () => {
@@ -172,13 +311,22 @@ export default function CreateExam() {
 
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold">Questions</h2>
-        <Button
-          color="primary"
-          startContent={<PlusIcon size={16} />}
-          onClick={addQuestion}
-        >
-          Add Question
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            color="secondary"
+            variant="flat"
+            onClick={() => setShowBulkImport(true)}
+          >
+            Bulk Import
+          </Button>
+          <Button
+            color="primary"
+            startContent={<PlusIcon size={16} />}
+            onClick={addQuestion}
+          >
+            Add Question
+          </Button>
+        </div>
       </div>
 
       {questions.length === 0 ? (
@@ -247,12 +395,17 @@ export default function CreateExam() {
 
                   <Textarea
                     label="Question Text"
-                    placeholder="Enter your question"
+                    placeholder={
+                      question.type === "mcq"
+                        ? "Paste question with options (each on new line):\nWhat is 2+2?\nA. 3\nB. 4\nC. 5\nD. 6"
+                        : "Enter your question"
+                    }
                     value={question.text}
                     onChange={(e) =>
-                      updateQuestion(qIndex, "text", e.target.value)
+                      handleQuestionTextChange(qIndex, e.target.value)
                     }
                     isRequired
+                    minRows={question.type === "mcq" ? 6 : 3}
                   />
 
                   {question.type === "mcq" && (
@@ -286,7 +439,8 @@ export default function CreateExam() {
                         </div>
                       ))}
                       <p className="text-xs text-default-500">
-                        Click ✓ to mark the correct answer
+                        Click ✓ to mark the correct answer. Tip: Paste question
+                        with options above (each on new line) to auto-fill!
                       </p>
                     </div>
                   )}
@@ -325,6 +479,79 @@ export default function CreateExam() {
           Save Exam
         </Button>
       </div>
+
+      {/* Bulk Import Modal */}
+      {showBulkImport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <CardHeader className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold">Bulk Import Questions</h2>
+              <Button
+                isIconOnly
+                variant="light"
+                onClick={() => setShowBulkImport(false)}
+              >
+                ✕
+              </Button>
+            </CardHeader>
+            <Divider />
+            <CardBody className="space-y-4">
+              <Select
+                label="Question Type"
+                selectedKeys={[bulkQuestionType]}
+                onChange={(e) => setBulkQuestionType(e.target.value)}
+                className="max-w-xs"
+              >
+                {questionTypes.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </Select>
+
+              <div className="bg-default-100 p-3 rounded-lg text-sm space-y-2">
+                <p className="font-semibold">Format Instructions:</p>
+                <p>• Start each question with * or a number</p>
+                <p>
+                  • For MCQ: Add options on new lines (with A), B), etc. or
+                  without)
+                </p>
+                <p>• For Long Answer: Just list the questions</p>
+                <p className="text-xs text-default-500 mt-2">Example MCQ:</p>
+                <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
+                  {`* What is 2+2?
+A) 3
+B) 4
+C) 5
+D) 6
+* What is the capital of France?
+A) London
+B) Paris
+C) Berlin
+D) Madrid`}
+                </pre>
+              </div>
+
+              <Textarea
+                label="Paste Questions Here"
+                placeholder="Paste your questions here..."
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                minRows={15}
+              />
+
+              <div className="flex justify-end gap-2">
+                <Button variant="flat" onClick={() => setShowBulkImport(false)}>
+                  Cancel
+                </Button>
+                <Button color="primary" onClick={handleBulkImport}>
+                  Import Questions
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
