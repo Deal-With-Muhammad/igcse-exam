@@ -23,6 +23,8 @@ import Link from "next/link";
 
 const questionTypes = [
   { value: "mcq", label: "Multiple Choice" },
+  { value: "truefalse", label: "True/False" },
+  { value: "fillblank", label: "Fill in the Blank" },
   { value: "long", label: "Long Answer" },
 ];
 
@@ -89,11 +91,10 @@ export default function CreateExam() {
     updateQuestion(questionIndex, "text", text);
   };
 
-  // Bulk import parser
   const parseBulkQuestions = (text, questionType) => {
     // Split by asterisk or numbers followed by period/parenthesis
     const questionBlocks = text
-      .split(/\n\s*[\*•\d+\.\)\]]\s*/)
+      .split(/\n\s*[*•\d+.)\]]\s*/)
       .map((block) => block.trim())
       .filter((block) => block.length > 0);
 
@@ -116,7 +117,7 @@ export default function CreateExam() {
             const line = lines[i];
             // Remove common option prefixes like A), B), a), b), A., etc
             const cleanedOption = line
-              .replace(/^[A-Da-d][\.\)\]\:]?\s*/, "")
+              .replace(/^[A-Da-d][.)\]:]?\s*/, "")
               .trim();
             if (cleanedOption) {
               options.push(cleanedOption);
@@ -134,6 +135,42 @@ export default function CreateExam() {
             text: questionText,
             options: options.slice(0, 4),
             correctOption: 0,
+            points: 1,
+          });
+        }
+      } else if (questionType === "truefalse") {
+        // For true/false, just take the question text
+        if (block.trim()) {
+          newQuestions.push({
+            id: Date.now().toString() + Math.random(),
+            type: "truefalse",
+            text: block.trim(),
+            correctAnswer: true,
+            points: 1,
+          });
+        }
+      } else if (questionType === "fillblank") {
+        // For fill in the blank, parse question and answer if provided
+        const lines = block
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+
+        if (lines.length >= 1) {
+          const questionText = lines[0];
+          // Look for answer in subsequent lines (optional)
+          const answerLine = lines.find((line) =>
+            line.toLowerCase().startsWith("answer:")
+          );
+          const answer = answerLine
+            ? answerLine.replace(/^answer:\s*/i, "").trim()
+            : "";
+
+          newQuestions.push({
+            id: Date.now().toString() + Math.random(),
+            type: "fillblank",
+            text: questionText,
+            correctAnswer: answer,
             points: 1,
           });
         }
@@ -200,13 +237,25 @@ export default function CreateExam() {
     // Update the question type
     currentQuestion.type = newType;
 
-    // If changing to MCQ, initialize options
-    if (
-      newType === "mcq" &&
-      (!currentQuestion.options || currentQuestion.options.length === 0)
-    ) {
-      currentQuestion.options = ["", "", "", ""];
-      currentQuestion.correctOption = 0;
+    // Initialize fields based on question type
+    if (newType === "mcq") {
+      if (!currentQuestion.options || currentQuestion.options.length === 0) {
+        currentQuestion.options = ["", "", "", ""];
+        currentQuestion.correctOption = 0;
+      }
+      delete currentQuestion.correctAnswer;
+    } else if (newType === "truefalse") {
+      currentQuestion.correctAnswer = true;
+      delete currentQuestion.options;
+      delete currentQuestion.correctOption;
+    } else if (newType === "fillblank") {
+      currentQuestion.correctAnswer = currentQuestion.correctAnswer || "";
+      delete currentQuestion.options;
+      delete currentQuestion.correctOption;
+    } else if (newType === "long") {
+      delete currentQuestion.options;
+      delete currentQuestion.correctOption;
+      delete currentQuestion.correctAnswer;
     }
 
     updatedQuestions[questionIndex] = currentQuestion;
@@ -249,6 +298,11 @@ export default function CreateExam() {
           alert(`Question ${i + 1} has empty options`);
           return;
         }
+      } else if (q.type === "fillblank") {
+        if (!q.correctAnswer || !q.correctAnswer.trim()) {
+          alert(`Question ${i + 1} is missing the correct answer`);
+          return;
+        }
       }
     }
 
@@ -274,6 +328,11 @@ export default function CreateExam() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getQuestionTypeLabel = (type) => {
+    const typeObj = questionTypes.find((t) => t.value === type);
+    return typeObj ? typeObj.label : type;
   };
 
   return (
@@ -351,11 +410,17 @@ export default function CreateExam() {
                   <span>Question {qIndex + 1}</span>
                   <Chip
                     size="sm"
-                    color={question.type === "mcq" ? "primary" : "secondary"}
+                    color={
+                      question.type === "mcq"
+                        ? "primary"
+                        : question.type === "truefalse"
+                        ? "success"
+                        : question.type === "fillblank"
+                        ? "warning"
+                        : "secondary"
+                    }
                   >
-                    {question.type === "mcq"
-                      ? "Multiple Choice"
-                      : "Long Answer"}
+                    {getQuestionTypeLabel(question.type)}
                   </Chip>
                 </div>
               }
@@ -398,6 +463,8 @@ export default function CreateExam() {
                     placeholder={
                       question.type === "mcq"
                         ? "Paste question with options (each on new line):\nWhat is 2+2?\nA. 3\nB. 4\nC. 5\nD. 6"
+                        : question.type === "fillblank"
+                        ? "Enter your question with blanks (use __ for blanks):\nThe capital of France is __."
                         : "Enter your question"
                     }
                     value={question.text}
@@ -445,6 +512,72 @@ export default function CreateExam() {
                     </div>
                   )}
 
+                  {question.type === "truefalse" && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium">Correct Answer</p>
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1"
+                          color={
+                            question.correctAnswer === true
+                              ? "success"
+                              : "default"
+                          }
+                          variant={
+                            question.correctAnswer === true
+                              ? "solid"
+                              : "bordered"
+                          }
+                          onClick={() =>
+                            updateQuestion(qIndex, "correctAnswer", true)
+                          }
+                        >
+                          True
+                        </Button>
+                        <Button
+                          className="flex-1"
+                          color={
+                            question.correctAnswer === false
+                              ? "success"
+                              : "default"
+                          }
+                          variant={
+                            question.correctAnswer === false
+                              ? "solid"
+                              : "bordered"
+                          }
+                          onClick={() =>
+                            updateQuestion(qIndex, "correctAnswer", false)
+                          }
+                        >
+                          False
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {question.type === "fillblank" && (
+                    <div className="space-y-3">
+                      <Input
+                        label="Correct Answer"
+                        placeholder="Enter the correct answer for the blank"
+                        value={question.correctAnswer || ""}
+                        onChange={(e) =>
+                          updateQuestion(
+                            qIndex,
+                            "correctAnswer",
+                            e.target.value
+                          )
+                        }
+                        isRequired
+                      />
+                      <p className="text-xs text-default-500">
+                        Use __ (double underscore) or [blank] in your question
+                        to indicate where the blank should be.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="flex justify-end">
                     <Button
                       color="danger"
@@ -480,7 +613,6 @@ export default function CreateExam() {
         </Button>
       </div>
 
-      {/* Bulk Import Modal */}
       {showBulkImport && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto">
@@ -512,14 +644,17 @@ export default function CreateExam() {
               <div className="bg-default-100 p-3 rounded-lg text-sm space-y-2">
                 <p className="font-semibold">Format Instructions:</p>
                 <p>• Start each question with * or a number</p>
-                <p>
-                  • For MCQ: Add options on new lines (with A), B), etc. or
-                  without)
-                </p>
-                <p>• For Long Answer: Just list the questions</p>
-                <p className="text-xs text-default-500 mt-2">Example MCQ:</p>
-                <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
-                  {`* What is 2+2?
+                {bulkQuestionType === "mcq" && (
+                  <>
+                    <p>
+                      • For MCQ: Add options on new lines (with A), B), etc. or
+                      without)
+                    </p>
+                    <p className="text-xs text-default-500 mt-2">
+                      Example MCQ:
+                    </p>
+                    <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
+                      {`* What is 2+2?
 A) 3
 B) 4
 C) 5
@@ -529,7 +664,51 @@ A) London
 B) Paris
 C) Berlin
 D) Madrid`}
-                </pre>
+                    </pre>
+                  </>
+                )}
+                {bulkQuestionType === "truefalse" && (
+                  <>
+                    <p>• For True/False: Just list the questions</p>
+                    <p className="text-xs text-default-500 mt-2">
+                      Example True/False:
+                    </p>
+                    <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
+                      {`* The Earth is flat
+* Water boils at 100°C at sea level
+* The sun revolves around Earth`}
+                    </pre>
+                  </>
+                )}
+                {bulkQuestionType === "fillblank" && (
+                  <>
+                    <p>
+                      • For Fill in the Blank: Use __ for blanks, optionally add
+                      Answer: on next line
+                    </p>
+                    <p className="text-xs text-default-500 mt-2">
+                      Example Fill in the Blank:
+                    </p>
+                    <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
+                      {`* The capital of France is __.
+Answer: Paris
+* Water freezes at __ degrees Celsius.
+Answer: 0`}
+                    </pre>
+                  </>
+                )}
+                {bulkQuestionType === "long" && (
+                  <>
+                    <p>• For Long Answer: Just list the questions</p>
+                    <p className="text-xs text-default-500 mt-2">
+                      Example Long Answer:
+                    </p>
+                    <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
+                      {`* Explain the process of photosynthesis
+* Describe the main causes of World War I`}
+                    </pre>
+                  </>
+                )}
               </div>
 
               <Textarea

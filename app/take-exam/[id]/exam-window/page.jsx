@@ -87,21 +87,21 @@ export default function ExamWindow({ params }) {
       }
     };
 
-    // const handleBlur = () => {
-    //   setIsWindowFocused(false);
-    //   setWarnings((prev) => prev + 1);
+    const handleBlur = () => {
+      setIsWindowFocused(false);
+      setWarnings((prev) => prev + 1);
 
-    //   // Start countdown timer
-    //   timerRef.current = setInterval(() => {
-    //     setTimeLeft((prev) => {
-    //       if (prev <= 1) {
-    //         terminateExam();
-    //         return 0;
-    //       }
-    //       return prev - 1;
-    //     });
-    //   }, 1000);
-    // };
+      // Start countdown timer
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            terminateExam();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    };
 
     // Prevent window closing without confirmation
     const handleBeforeUnload = (e) => {
@@ -130,13 +130,13 @@ export default function ExamWindow({ params }) {
     };
   }, [examTerminated]);
 
-  // const terminateExam = () => {
-  //   setExamTerminated(true);
-  //   if (timerRef.current) {
-  //     clearInterval(timerRef.current);
-  //   }
-  //   onOpen();
-  // };
+  const terminateExam = () => {
+    setExamTerminated(true);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    onOpen();
+  };
 
   const handleAnswerChange = (value) => {
     const newAnswers = [...answers];
@@ -225,7 +225,7 @@ export default function ExamWindow({ params }) {
                   Student: {examData.studentName}
                 </p>
               </div>
-              {/* <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   {isWindowFocused ? (
                     <Eye className="h-4 w-4 text-success" />
@@ -241,7 +241,7 @@ export default function ExamWindow({ params }) {
                     Warnings: {warnings}
                   </Chip>
                 )}
-              </div> */}
+              </div>
             </div>
           </div>
         </div>
@@ -374,7 +374,7 @@ export default function ExamWindow({ params }) {
       </div>
 
       {/* Termination Modal */}
-      {/* <Modal isOpen={isOpen} isDismissable={false} hideCloseButton size="md">
+      <Modal isOpen={isOpen} isDismissable={false} hideCloseButton size="md">
         <ModalContent>
           <ModalHeader className="flex flex-col gap-1">
             <div className="flex items-center gap-2 text-danger">
@@ -404,7 +404,7 @@ export default function ExamWindow({ params }) {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal> */}
+      </Modal>
     </>
   );
 }
