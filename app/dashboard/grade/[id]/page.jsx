@@ -13,7 +13,14 @@ import {
   Progress,
   Chip,
 } from "@nextui-org/react";
-import { ArrowLeftIcon, CheckIcon, SaveIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  SaveIcon,
+  AlertTriangleIcon,
+  XIcon,
+  CheckCircleIcon,
+} from "lucide-react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link";
@@ -46,6 +53,7 @@ export default function GradeSubmission({ params }) {
           ...submissionDoc.data(),
         };
         setSubmission(submissionData);
+        console.log("Submission Data:", submissionData);
 
         // Fetch exam details
         const examDoc = await getDoc(doc(db, "exams", submissionData.examId));
@@ -58,14 +66,36 @@ export default function GradeSubmission({ params }) {
         const examData = { id: examDoc.id, ...examDoc.data() };
         setExam(examData);
 
-        // Initialize grades and comments
         if (submissionData.graded) {
           setGrades(submissionData.grades || []);
           setComments(submissionData.comments || []);
           setTotalScore(submissionData.totalScore || 0);
         } else {
-          // Initialize with zeros
-          const initialGrades = examData.questions.map(() => 0);
+          // Auto-calculate grades for objective questions
+          const initialGrades = examData.questions.map((question, index) => {
+            const studentAnswer = submissionData.answers[index];
+
+            if (question.type === "mcq") {
+              // Auto-grade MCQ
+              return studentAnswer === question.correctOption
+                ? question.points
+                : 0;
+            } else if (question.type === "truefalse") {
+              // Auto-grade True/False
+              return studentAnswer === question.correctAnswer
+                ? question.points
+                : 0;
+            } else if (question.type === "fillblank") {
+              // Auto-grade Fill in the Blank (case-insensitive comparison)
+              const correct = question.correctAnswer?.toLowerCase().trim();
+              const answer = studentAnswer?.toLowerCase().trim();
+              return correct === answer ? question.points : 0;
+            } else {
+              // Long answer questions need manual grading
+              return 0;
+            }
+          });
+
           const initialComments = examData.questions.map(() => "");
           setGrades(initialGrades);
           setComments(initialComments);
@@ -87,24 +117,25 @@ export default function GradeSubmission({ params }) {
     fetchSubmissionData();
   }, [id, router]);
 
-  useEffect(() => {
-    // Calculate total score whenever grades change
-    if (grades.length > 0 && exam) {
-      const total = grades.reduce((sum, grade, index) => {
-        return sum + (Number(grade) || 0);
-      }, 0);
-      setTotalScore(total);
-    }
-  }, [grades, exam]);
-
   const handleGradeChange = (index, value) => {
     const newGrades = [...grades];
     const maxPoints = exam.questions[index].points;
-    // Ensure grade is not more than max points
-    newGrades[index] = Math.min(Number(value) || 0, maxPoints);
-    setGrades(newGrades);
-  };
 
+    // 1. Calculate the new grade value, ensuring it doesn't exceed max points
+    const newGradeValue = Math.min(Number(value) || 0, maxPoints);
+    newGrades[index] = newGradeValue;
+
+    // 2. Set the new grades array
+    setGrades(newGrades);
+
+    // 3. Immediately calculate the new total score from the 'newGrades' array
+    const newTotal = newGrades.reduce((sum, grade) => {
+      return sum + (Number(grade) || 0);
+    }, 0);
+
+    // 4. Set the new total score
+    setTotalScore(newTotal);
+  };
   const handleCommentChange = (index, value) => {
     const newComments = [...comments];
     newComments[index] = value;
@@ -149,6 +180,11 @@ export default function GradeSubmission({ params }) {
       </div>
     );
   }
+
+  const totalWarnings = submission.warnings || 0;
+  const totalSwitches = submission.totalSwitches || 0;
+  const blurEvents =
+    submission.switchLog?.filter((log) => log.event === "blur") || [];
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
@@ -209,96 +245,316 @@ export default function GradeSubmission({ params }) {
         </CardBody>
       </Card>
 
-      <div className="space-y-6">
-        {exam.questions.map((question, qIndex) => (
-          <Card key={qIndex} className="mb-4">
-            <CardHeader>
-              <div className="flex justify-between w-full">
-                <div>
-                  <h3 className="font-medium">Question {qIndex + 1}</h3>
-                  <p className="text-small text-default-500">
-                    {question.type === "mcq"
-                      ? "Multiple Choice"
-                      : "Long Answer"}{" "}
-                    - {question.points} points
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={question.points}
-                    value={grades[qIndex]?.toString() || "0"}
-                    onChange={(e) => handleGradeChange(qIndex, e.target.value)}
-                    className="w-20"
-                    endContent={
-                      <span className="text-small text-default-500">
-                        /{question.points}
-                      </span>
-                    }
-                  />
-                </div>
+      <Card
+        className={`mb-6 ${
+          totalSwitches > 0 ? "border-warning" : "border-success"
+        }`}
+      >
+        <CardHeader
+          className={totalSwitches > 0 ? "bg-warning-50" : "bg-success-50"}
+        >
+          <div className="flex items-center gap-2">
+            {totalSwitches > 0 ? (
+              <>
+                <AlertTriangleIcon size={20} className="text-warning" />
+                <h3 className="font-semibold text-warning-700">
+                  Window Switch Activity Detected
+                </h3>
+              </>
+            ) : (
+              <>
+                <CheckCircleIcon size={20} className="text-success" />
+                <h3 className="font-semibold text-success-700">
+                  No Window Switches Detected
+                </h3>
+              </>
+            )}
+          </div>
+        </CardHeader>
+        <Divider />
+        <CardBody>
+          {totalSwitches > 0 ? (
+            <>
+              <p className="text-sm text-default-600 mb-3">
+                The student switched windows/tabs {totalSwitches} time(s) during
+                the exam:
+              </p>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {blurEvents.map((switchEvent, index) => (
+                  <div
+                    key={index}
+                    className="flex items-start gap-3 p-3 bg-warning-50 rounded-lg border border-warning-200"
+                  >
+                    <div className="flex-shrink-0">
+                      <div className="w-6 h-6 rounded-full bg-warning-200 flex items-center justify-center">
+                        <span className="text-xs font-bold text-warning-700">
+                          {index + 1}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex-grow">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium">
+                          Warning #{switchEvent.warningNumber}
+                        </span>
+                        {switchEvent.terminated && (
+                          <Chip color="danger" size="sm" variant="flat">
+                            Auto-Terminated
+                          </Chip>
+                        )}
+                      </div>
+                      <p className="text-xs text-default-500">
+                        {new Date(
+                          switchEvent.timestamp?.toDate
+                            ? switchEvent.timestamp.toDate()
+                            : switchEvent.timestamp
+                        ).toLocaleString()}
+                      </p>
+                      {switchEvent.timeAway && (
+                        <p className="text-xs text-warning-700 mt-1">
+                          Time away: {switchEvent.timeAway}s
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </CardHeader>
-            <Divider />
-            <CardBody className="space-y-4">
-              <div>
-                <p className="font-medium mb-2">Question:</p>
-                <p className="text-default-700">{question.text}</p>
+              {submission.terminated && (
+                <div className="mt-4 p-3 bg-danger-50 rounded-lg border border-danger-200">
+                  <div className="flex items-center gap-2">
+                    <XIcon size={16} className="text-danger" />
+                    <p className="text-sm font-medium text-danger-700">
+                      Exam was automatically terminated due to excessive window
+                      switching
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-sm text-default-600">
+                  Total warnings issued: <strong>{totalWarnings}</strong>
+                </p>
+                <p className="text-sm text-default-600 mt-1">
+                  Total window switches: <strong>{totalSwitches}</strong>
+                </p>
               </div>
+            </>
+          ) : (
+            <div className="text-center py-6">
+              <CheckCircleIcon
+                size={48}
+                className="text-success mx-auto mb-3"
+              />
+              <p className="text-sm font-medium text-success-700 mb-2">
+                Excellent! The student maintained focus throughout the exam.
+              </p>
+              <div className="mt-4 p-3 bg-success-50 rounded-lg border border-success-200 inline-block">
+                <p className="text-sm text-success-800">
+                  Total warnings: <strong>{totalWarnings}</strong>
+                </p>
+                <p className="text-sm text-success-800 mt-1">
+                  Total window switches: <strong>{totalSwitches}</strong>
+                </p>
+              </div>
+            </div>
+          )}
+        </CardBody>
+      </Card>
 
-              <div>
-                <p className="font-medium mb-2">Student's Answer:</p>
-                {question.type === "mcq" ? (
+      <div className="space-y-6">
+        {exam.questions.map((question, qIndex) => {
+          const isAutoGraded = ["mcq", "truefalse", "fillblank"].includes(
+            question.type
+          );
+          const isCorrect = grades[qIndex] === question.points;
+
+          return (
+            <Card key={qIndex} className="mb-4">
+              <CardHeader>
+                <div className="flex justify-between w-full">
                   <div>
-                    {question.options.map((option, oIndex) => (
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium">Question {qIndex + 1}</h3>
+                      {isAutoGraded && (
+                        <Chip size="sm" color="secondary" variant="flat">
+                          Auto-Graded
+                        </Chip>
+                      )}
+                    </div>
+                    <p className="text-small text-default-500">
+                      {question.type === "mcq"
+                        ? "Multiple Choice"
+                        : question.type === "truefalse"
+                        ? "True/False"
+                        : question.type === "fillblank"
+                        ? "Fill in the Blank"
+                        : "Long Answer"}{" "}
+                      - {question.points} points
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={question.points}
+                      value={grades[qIndex]?.toString() || "0"}
+                      onChange={(e) =>
+                        handleGradeChange(qIndex, e.target.value)
+                      }
+                      className="w-20"
+                      isReadOnly={isAutoGraded}
+                      endContent={
+                        <span className="text-small text-default-500">
+                          /{question.points}
+                        </span>
+                      }
+                    />
+                  </div>
+                </div>
+              </CardHeader>
+              <Divider />
+              <CardBody className="space-y-4">
+                <div>
+                  <p className="font-medium mb-2">Question:</p>
+                  <p className="text-default-700">{question.text}</p>
+                </div>
+
+                <div>
+                  <p className="font-medium mb-2">Student's Answer:</p>
+                  {question.type === "mcq" ? (
+                    <div>
+                      {question.options.map((option, oIndex) => (
+                        <div
+                          key={oIndex}
+                          className={`p-2 rounded mb-2 flex items-center gap-2 ${
+                            submission.answers[qIndex] === oIndex
+                              ? isCorrect
+                                ? "bg-success-50 border border-success"
+                                : "bg-danger-50 border border-danger"
+                              : "bg-gray-50"
+                          } ${
+                            question.correctOption === oIndex
+                              ? "border-l-4 border-l-success"
+                              : ""
+                          }`}
+                        >
+                          {question.correctOption === oIndex && (
+                            <CheckIcon size={16} className="text-success" />
+                          )}
+                          {submission.answers[qIndex] === oIndex &&
+                            question.correctOption !== oIndex && (
+                              <XIcon size={16} className="text-danger" />
+                            )}
+                          <span>{option}</span>
+                        </div>
+                      ))}
+                      <Chip
+                        color={isCorrect ? "success" : "danger"}
+                        variant="flat"
+                        size="sm"
+                      >
+                        {isCorrect ? "Correct Answer" : "Incorrect Answer"}
+                      </Chip>
+                    </div>
+                  ) : question.type === "truefalse" ? (
+                    <div>
                       <div
-                        key={oIndex}
-                        className={`p-2 rounded mb-2 flex items-center gap-2 ${
-                          submission.answers[qIndex] === oIndex
-                            ? "bg-primary-50 border border-primary"
-                            : "bg-gray-50"
-                        } ${
-                          question.correctOption === oIndex
-                            ? "border-l-4 border-l-success"
-                            : ""
+                        className={`p-3 rounded mb-2 ${
+                          isCorrect
+                            ? "bg-success-50 border border-success"
+                            : "bg-danger-50 border border-danger"
                         }`}
                       >
-                        {question.correctOption === oIndex && (
-                          <CheckIcon size={16} className="text-success" />
-                        )}
-                        <span>{option}</span>
+                        <div className="flex items-center gap-2">
+                          {isCorrect ? (
+                            <CheckIcon size={16} className="text-success" />
+                          ) : (
+                            <XIcon size={16} className="text-danger" />
+                          )}
+                          <span className="font-medium">
+                            Student answered:{" "}
+                            {submission.answers[qIndex] ? "True" : "False"}
+                          </span>
+                        </div>
+                        <p className="text-sm text-default-500 mt-1">
+                          Correct answer:{" "}
+                          {question.correctAnswer ? "True" : "False"}
+                        </p>
                       </div>
-                    ))}
-                    {submission.answers[qIndex] === question.correctOption ? (
-                      <Chip color="success" variant="flat" size="sm">
-                        Correct Answer
+                      <Chip
+                        color={isCorrect ? "success" : "danger"}
+                        variant="flat"
+                        size="sm"
+                      >
+                        {isCorrect ? "Correct Answer" : "Incorrect Answer"}
                       </Chip>
-                    ) : (
-                      <Chip color="danger" variant="flat" size="sm">
-                        Incorrect Answer
+                    </div>
+                  ) : question.type === "fillblank" ? (
+                    <div>
+                      <div
+                        className={`p-3 rounded mb-2 ${
+                          isCorrect
+                            ? "bg-success-50 border border-success"
+                            : "bg-danger-50 border border-danger"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          {isCorrect ? (
+                            <CheckIcon size={16} className="text-success" />
+                          ) : (
+                            <XIcon size={16} className="text-danger" />
+                          )}
+                          <span className="font-medium">Student's answer:</span>
+                        </div>
+                        <p className="ml-6">
+                          {submission.answers[qIndex] || "No answer provided"}
+                        </p>
+                        <p className="text-sm text-default-500 mt-2 ml-6">
+                          Expected: {question.correctAnswer}
+                        </p>
+                      </div>
+                      <Chip
+                        color={isCorrect ? "success" : "danger"}
+                        variant="flat"
+                        size="sm"
+                      >
+                        {isCorrect ? "Correct Answer" : "Incorrect Answer"}
                       </Chip>
-                    )}
-                  </div>
-                ) : (
-                  <div className="bg-gray-50 p-3 rounded">
-                    <p>{submission.answers[qIndex] || "No answer provided"}</p>
-                  </div>
-                )}
-              </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="bg-gray-50 p-3 rounded">
+                        <p>
+                          {submission.answers[qIndex] || "No answer provided"}
+                        </p>
+                      </div>
+                      <Chip
+                        color="warning"
+                        variant="flat"
+                        size="sm"
+                        className="mt-2"
+                      >
+                        Requires Manual Grading
+                      </Chip>
+                    </div>
+                  )}
+                </div>
 
-              <div>
-                <p className="font-medium mb-2">Feedback:</p>
-                <Textarea
-                  placeholder="Add feedback or comments for the student"
-                  value={comments[qIndex] || ""}
-                  onChange={(e) => handleCommentChange(qIndex, e.target.value)}
-                  minRows={2}
-                />
-              </div>
-            </CardBody>
-          </Card>
-        ))}
+                <div>
+                  <p className="font-medium mb-2">Feedback:</p>
+                  <Textarea
+                    placeholder="Add feedback or comments for the student"
+                    value={comments[qIndex] || ""}
+                    onChange={(e) =>
+                      handleCommentChange(qIndex, e.target.value)
+                    }
+                    minRows={2}
+                  />
+                </div>
+              </CardBody>
+            </Card>
+          );
+        })}
       </div>
 
       <div className="flex justify-between mt-8">

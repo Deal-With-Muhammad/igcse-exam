@@ -19,6 +19,7 @@ import {
   ModalFooter,
   useDisclosure,
   Chip,
+  Input,
 } from "@nextui-org/react";
 import {
   ArrowLeftIcon,
@@ -41,7 +42,17 @@ export default function ExamWindow({ params }) {
   const [isWindowFocused, setIsWindowFocused] = useState(true);
   const [examTerminated, setExamTerminated] = useState(false);
   const [warnings, setWarnings] = useState(0);
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const [switchLog, setSwitchLog] = useState([]);
+  const {
+    isOpen: isTerminateOpen,
+    onOpen: onTerminateOpen,
+    onOpenChange: onTerminateOpenChange,
+  } = useDisclosure();
+  const {
+    isOpen: isWarningOpen,
+    onOpen: onWarningOpen,
+    onClose: onWarningClose,
+  } = useDisclosure();
 
   const timerRef = useRef(null);
   const warningTimerRef = useRef(null);
@@ -52,7 +63,13 @@ export default function ExamWindow({ params }) {
     if (storedData) {
       const data = JSON.parse(storedData);
       setExamData(data);
-      setAnswers(data.exam.questions.map(() => ""));
+      setAnswers(
+        data.exam.questions.map((q) => {
+          if (q.type === "mcq" || q.type === "truefalse") return "";
+          if (q.type === "fillblank") return "";
+          return ""; // long-answer
+        })
+      );
     } else {
       // Redirect if no exam data
       window.close();
@@ -77,19 +94,51 @@ export default function ExamWindow({ params }) {
     };
     document.addEventListener("keydown", handleKeyDown);
 
-    // Window focus/blur detection
     const handleFocus = () => {
+      const focusTime = new Date().toISOString();
+      console.log("[v0] Window focused at:", focusTime);
+
+      // Log the focus event
+      setSwitchLog((prev) => [
+        ...prev,
+        {
+          event: "focus",
+          timestamp: focusTime,
+          timeAway: timeLeft < 60 ? 60 - timeLeft : 0,
+        },
+      ]);
+
       setIsWindowFocused(true);
       setTimeLeft(60); // Reset timer when window regains focus
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+
+      // Close warning modal when they return
+      onWarningClose();
     };
 
     const handleBlur = () => {
+      const blurTime = new Date().toISOString();
+      console.log("[v0] Window lost focus at:", blurTime);
+
       setIsWindowFocused(false);
-      setWarnings((prev) => prev + 1);
+      const newWarningCount = warnings + 1;
+      setWarnings(newWarningCount);
+
+      // Log the blur/switch event
+      setSwitchLog((prev) => [
+        ...prev,
+        {
+          event: "blur",
+          timestamp: blurTime,
+          warningNumber: newWarningCount,
+        },
+      ]);
+
+      // Show warning modal immediately
+      onWarningOpen();
 
       // Start countdown timer
       timerRef.current = setInterval(() => {
@@ -103,6 +152,16 @@ export default function ExamWindow({ params }) {
       }, 1000);
     };
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        console.log("[v0] Tab/window hidden");
+        handleBlur();
+      } else {
+        console.log("[v0] Tab/window visible");
+        handleFocus();
+      }
+    };
+
     // Prevent window closing without confirmation
     const handleBeforeUnload = (e) => {
       if (!examTerminated) {
@@ -112,14 +171,16 @@ export default function ExamWindow({ params }) {
     };
 
     window.addEventListener("focus", handleFocus);
-    // window.addEventListener("blur", handleBlur);
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
       document.removeEventListener("contextmenu", handleContextMenu);
       document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("focus", handleFocus);
-      // window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -128,14 +189,27 @@ export default function ExamWindow({ params }) {
         clearInterval(warningTimerRef.current);
       }
     };
-  }, [examTerminated]);
+  }, [warnings, examTerminated]);
 
   const terminateExam = () => {
+    console.log("[v0] Exam terminated due to exceeding time away");
     setExamTerminated(true);
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
-    onOpen();
+
+    // Log termination event
+    setSwitchLog((prev) => [
+      ...prev,
+      {
+        event: "terminated",
+        timestamp: new Date().toISOString(),
+        reason: "Exceeded 60 seconds away from exam window",
+      },
+    ]);
+
+    onWarningClose();
+    onTerminateOpen();
   };
 
   const handleAnswerChange = (value) => {
@@ -158,7 +232,7 @@ export default function ExamWindow({ params }) {
 
   const submitExam = async () => {
     try {
-      setExamTerminated(true); // Add this line to disable beforeunload warning
+      setExamTerminated(true);
       setSubmitting(true);
 
       const submissionData = {
@@ -171,8 +245,12 @@ export default function ExamWindow({ params }) {
         submittedAt: serverTimestamp(),
         graded: false,
         warnings: warnings,
+        switchLog: switchLog,
         completed: true,
+        totalSwitches: switchLog.filter((log) => log.event === "blur").length,
       };
+
+      console.log("[v0] Submitting exam with switch log:", switchLog);
 
       await addDoc(collection(db, "submissions"), submissionData);
 
@@ -189,7 +267,7 @@ export default function ExamWindow({ params }) {
     } catch (error) {
       console.error("Error submitting exam:", error);
       setSubmitting(false);
-      setExamTerminated(false); // Reset if submission fails
+      setExamTerminated(false);
     }
   };
 
@@ -295,11 +373,25 @@ export default function ExamWindow({ params }) {
                   </p>
                 </div>
                 <Chip
-                  color={question.type === "mcq" ? "primary" : "secondary"}
+                  color={
+                    question.type === "mcq"
+                      ? "primary"
+                      : question.type === "truefalse"
+                      ? "secondary"
+                      : question.type === "fillblank"
+                      ? "success"
+                      : "default"
+                  }
                   variant="flat"
                   size="sm"
                 >
-                  {question.type === "mcq" ? "Multiple Choice" : "Long Answer"}
+                  {question.type === "mcq"
+                    ? "Multiple Choice"
+                    : question.type === "truefalse"
+                    ? "True/False"
+                    : question.type === "fillblank"
+                    ? "Fill in the Blank"
+                    : "Long Answer"}
                 </Chip>
               </div>
             </CardHeader>
@@ -328,6 +420,49 @@ export default function ExamWindow({ params }) {
                     </Radio>
                   ))}
                 </RadioGroup>
+              ) : question.type === "truefalse" ? (
+                <RadioGroup
+                  value={answers[currentQuestion]?.toString()}
+                  onValueChange={handleAnswerChange}
+                  classNames={{
+                    wrapper: "gap-3",
+                  }}
+                >
+                  <Radio
+                    value="true"
+                    classNames={{
+                      base: "inline-flex m-0 bg-content1 hover:bg-content2 items-center justify-between flex-row-reverse max-w-full cursor-pointer rounded-lg gap-4 p-4 border-2 border-transparent data-[selected=true]:border-success",
+                      label: "text-sm",
+                    }}
+                  >
+                    True
+                  </Radio>
+                  <Radio
+                    value="false"
+                    classNames={{
+                      base: "inline-flex m-0 bg-content1 hover:bg-content2 items-center justify-between flex-row-reverse max-w-full cursor-pointer rounded-lg gap-4 p-4 border-2 border-transparent data-[selected=true]:border-danger",
+                      label: "text-sm",
+                    }}
+                  >
+                    False
+                  </Radio>
+                </RadioGroup>
+              ) : question.type === "fillblank" ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Fill in the blank with your answer:
+                  </p>
+                  <Input
+                    placeholder="Type your answer here..."
+                    value={answers[currentQuestion] || ""}
+                    onChange={(e) => handleAnswerChange(e.target.value)}
+                    variant="bordered"
+                    size="lg"
+                    classNames={{
+                      input: "text-base",
+                    }}
+                  />
+                </div>
               ) : (
                 <Textarea
                   placeholder="Type your answer here..."
@@ -373,8 +508,61 @@ export default function ExamWindow({ params }) {
         </div>
       </div>
 
+      <Modal
+        isOpen={isWarningOpen}
+        isDismissable={false}
+        hideCloseButton
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-warning">
+              <AlertTriangle className="h-5 w-5" />
+              Warning: Focus Lost
+            </div>
+          </ModalHeader>
+          <ModalBody>
+            <div className="space-y-4">
+              <p className="text-base font-medium">
+                You have switched away from the exam window!
+              </p>
+              <div className="bg-warning-50 border border-warning-200 rounded-lg p-4">
+                <p className="text-warning-800 text-sm mb-2">
+                  <strong>Time remaining before auto-termination:</strong>
+                </p>
+                <p className="text-3xl font-bold text-warning-800 text-center">
+                  {timeLeft}s
+                </p>
+              </div>
+              <ul className="text-sm space-y-2">
+                <li className="flex items-start gap-2">
+                  <span className="text-danger font-bold">•</span>
+                  <span>Return to the exam window immediately</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-danger font-bold">•</span>
+                  <span>
+                    If you stay away for more than 60 seconds, your exam will be
+                    terminated
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-danger font-bold">•</span>
+                  <span>Warning #{warnings} recorded</span>
+                </li>
+              </ul>
+            </div>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+
       {/* Termination Modal */}
-      <Modal isOpen={isOpen} isDismissable={false} hideCloseButton size="md">
+      <Modal
+        isOpen={isTerminateOpen}
+        isDismissable={false}
+        hideCloseButton
+        size="md"
+      >
         <ModalContent>
           <ModalHeader className="flex flex-col gap-1">
             <div className="flex items-center gap-2 text-danger">
@@ -394,6 +582,12 @@ export default function ExamWindow({ params }) {
               <div className="bg-danger-50 border border-danger-200 rounded-lg p-3">
                 <p className="text-danger-800 text-sm">
                   Total warnings received: <strong>{warnings}</strong>
+                </p>
+                <p className="text-danger-800 text-sm mt-1">
+                  Total switches:{" "}
+                  <strong>
+                    {switchLog.filter((log) => log.event === "blur").length}
+                  </strong>
                 </p>
               </div>
             </div>
