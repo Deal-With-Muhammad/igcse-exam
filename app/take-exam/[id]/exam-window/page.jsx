@@ -230,27 +230,27 @@ export default function ExamWindow({ params }) {
     }
   };
 
+  // In your exam window component, update the submission saving part:
   const submitExam = async () => {
     try {
-      setExamTerminated(true);
-      setSubmitting(true);
+      setIsSubmitting(true);
 
       const submissionData = {
-        examId: id,
-        examTitle: examData.exam.title,
-        studentName: examData.studentName,
-        studentClass: examData.studentClass,
-        studentId: examData.studentId,
+        examId: exam.id,
+        examTitle: exam.title,
+        studentName,
+        studentClass,
+        branch, // Add branch here
+        branchName: branches.find((b) => b.key === branch)?.label || branch, // Add branch name
         answers,
         submittedAt: serverTimestamp(),
+        warnings: warnings.length,
+        switchLog: switchLogs,
+        totalSwitches: totalSwitches,
+        terminated: isTerminated,
         graded: false,
-        warnings: warnings,
-        switchLog: switchLog,
-        completed: true,
-        totalSwitches: switchLog.filter((log) => log.event === "blur").length,
+        createdAt: serverTimestamp(),
       };
-
-      console.log("[v0] Submitting exam with switch log:", switchLog);
 
       await addDoc(collection(db, "submissions"), submissionData);
 

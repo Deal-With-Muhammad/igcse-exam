@@ -9,6 +9,8 @@ import {
   CardHeader,
   Divider,
   Input,
+  Select,
+  SelectItem,
   Modal,
   ModalContent,
   ModalHeader,
@@ -27,10 +29,17 @@ export default function ExamRegistration({ params }) {
   const [exam, setExam] = useState(null);
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
-  const [studentId, setStudentId] = useState("");
+  const [branch, setBranch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
+
+  const branches = [
+    { key: "klang", label: "Klang" },
+    { key: "cheras", label: "Cheras" },
+    { key: "batu-caves", label: "Batu Caves" },
+    { key: "rawang", label: "Rawang" },
+  ];
 
   useEffect(() => {
     const fetchExam = async () => {
@@ -59,6 +68,16 @@ export default function ExamRegistration({ params }) {
       return;
     }
 
+    if (!studentClass.trim()) {
+      setError("Please enter your class");
+      return;
+    }
+
+    if (!branch) {
+      setError("Please select your branch");
+      return;
+    }
+
     setError("");
     onOpen();
   };
@@ -68,7 +87,8 @@ export default function ExamRegistration({ params }) {
       exam,
       studentName,
       studentClass,
-      studentId,
+      branch,
+      branchName: branches.find((b) => b.key === branch)?.label || branch,
     };
 
     // Store exam data in sessionStorage for the new window
@@ -156,6 +176,7 @@ export default function ExamRegistration({ params }) {
                 placeholder="Enter your class or level"
                 value={studentClass}
                 onChange={(e) => setStudentClass(e.target.value)}
+                isRequired
                 variant="bordered"
                 classNames={{
                   input: "text-sm",
@@ -163,17 +184,24 @@ export default function ExamRegistration({ params }) {
                 }}
               />
 
-              <Input
-                label="Student ID (Optional)"
-                placeholder="Enter your student ID if applicable"
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
+              <Select
+                label="Branch"
+                placeholder="Select your branch"
+                selectedKeys={branch ? [branch] : []}
+                onChange={(e) => setBranch(e.target.value)}
+                isRequired
                 variant="bordered"
                 classNames={{
-                  input: "text-sm",
+                  trigger: "h-12",
                   label: "text-sm font-medium",
                 }}
-              />
+              >
+                {branches.map((branch) => (
+                  <SelectItem key={branch.key} value={branch.key}>
+                    {branch.label}
+                  </SelectItem>
+                ))}
+              </Select>
 
               {error && (
                 <div className="bg-danger-50 border border-danger-200 rounded-lg p-3">
@@ -188,6 +216,7 @@ export default function ExamRegistration({ params }) {
                   size="lg"
                   onClick={startExam}
                   endContent={<ExternalLink size={18} />}
+                  isDisabled={!studentName || !studentClass || !branch}
                 >
                   Start Exam
                 </Button>
@@ -239,6 +268,30 @@ export default function ExamRegistration({ params }) {
                     <li>Make sure you have a stable internet connection</li>
                     <li>Close all unnecessary applications before starting</li>
                   </ul>
+
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm font-medium mb-1">
+                      Your Information:
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-default-500">Name:</span>
+                        <p className="font-medium">{studentName}</p>
+                      </div>
+                      <div>
+                        <span className="text-default-500">Class:</span>
+                        <p className="font-medium">{studentClass}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-default-500">Branch:</span>
+                        <p className="font-medium">
+                          {branches.find((b) => b.key === branch)?.label ||
+                            branch}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="bg-warning-50 border border-warning-200 rounded-lg p-3 mt-4">
                     <p className="text-warning-800 text-sm font-medium">
                       Once you click "Open Exam Window", you cannot return to
