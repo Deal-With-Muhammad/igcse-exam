@@ -233,21 +233,21 @@ export default function ExamWindow({ params }) {
   // In your exam window component, update the submission saving part:
   const submitExam = async () => {
     try {
-      setIsSubmitting(true);
+      setSubmitting(true);
 
       const submissionData = {
-        examId: exam.id,
+        examId: id,
         examTitle: exam.title,
-        studentName,
-        studentClass,
-        branch, // Add branch here
-        branchName: branches.find((b) => b.key === branch)?.label || branch, // Add branch name
-        answers,
+        studentName: examData.studentName,
+        studentClass: examData.studentClass,
+        branch: examData.branch,
+        branchName: examData.branchName,
+        answers: answers,
         submittedAt: serverTimestamp(),
-        warnings: warnings.length,
-        switchLog: switchLogs,
-        totalSwitches: totalSwitches,
-        terminated: isTerminated,
+        warnings: warnings,
+        switchLog: switchLog,
+        totalSwitches: switchLog.filter((log) => log.event === "blur").length,
+        terminated: examTerminated,
         graded: false,
         createdAt: serverTimestamp(),
       };
@@ -257,17 +257,17 @@ export default function ExamWindow({ params }) {
       // Clear session storage
       sessionStorage.removeItem("examData");
 
-      // Show success message briefly then close window
+      // Redirect to completion page
+      router.push("/take-exam/complete");
+
+      // Optionally close the window after a delay
       setTimeout(() => {
         window.close();
-      }, 1500);
-
-      // Redirect to completion page (will show briefly before window closes)
-      window.location.href = "/take-exam/complete";
+      }, 1000);
     } catch (error) {
       console.error("Error submitting exam:", error);
+      alert("Failed to submit exam. Please try again.");
       setSubmitting(false);
-      setExamTerminated(false);
     }
   };
 

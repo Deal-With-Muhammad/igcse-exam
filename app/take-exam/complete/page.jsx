@@ -7,8 +7,23 @@ import Link from "next/link";
 
 export default function ExamComplete() {
   useEffect(() => {
-    // Clear any remaining session data
+    // Clear exam data
     sessionStorage.removeItem("examData");
+
+    // Check if we should close the window (if it's a popup)
+    const examSubmitted = sessionStorage.getItem("examSubmitted");
+
+    if (examSubmitted === "true") {
+      // Clear the flag
+      sessionStorage.removeItem("examSubmitted");
+
+      // Close the window after 2 seconds if it was opened as a popup
+      setTimeout(() => {
+        if (window.opener && !window.opener.closed) {
+          window.close();
+        }
+      }, 2000);
+    }
   }, []);
 
   return (
