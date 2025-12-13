@@ -32,7 +32,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"
-, "components/collection-form/Form.tsx", "update-tanzeem.js", "app/dashboard/exam/[id]/page.jsx", "app/dashboard/page.jsx", "app/dashboard/create-exam/page.jsx", "app/dashboard/grade/[id]/page.jsx", "app/preview-exam/[id]/page.jsx", "app/take-exam/page.jsx", "app/take-exam/[id]/exam-window/page.jsx"  ],
+, "components/collection-form/Form.tsx", "update-tanzeem.js", "app/dashboard/exam/[id]/page.jsx", "app/dashboard/page.jsx", "app/dashboard/create-exam/page.jsx", "app/dashboard/grade/[id]/page.jsx", "app/preview-exam/[id]/page.jsx", "app/take-exam/page.jsx", "app/take-exam/[id]/exam-window/page.jsx", "app/dashboard/edit-exam/[id]/page.jsx"  ],
   "exclude": [
     "node_modules"
   ]

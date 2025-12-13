@@ -1,0 +1,765 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Divider,
+  Input,
+  Textarea,
+  Select,
+  SelectItem,
+  Chip,
+  Accordion,
+  AccordionItem,
+} from "@nextui-org/react";
+import {
+  PlusIcon,
+  Trash2Icon,
+  SaveIcon,
+  ArrowLeftIcon,
+  EditIcon,
+} from "lucide-react";
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import Link from "next/link";
+
+const questionTypes = [
+  { value: "mcq", label: "Multiple Choice" },
+  { value: "truefalse", label: "True/False" },
+  { value: "fillblank", label: "Fill in the Blank" },
+  { value: "long", label: "Long Answer" },
+];
+
+export default function EditExam({ params }) {
+  const router = useRouter();
+  const { id } = params;
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Bulk import states
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkQuestionType, setBulkQuestionType] = useState("mcq");
+
+  useEffect(() => {
+    const fetchExam = async () => {
+      try {
+        setLoading(true);
+        const examDoc = await getDoc(doc(db, "exams", id));
+
+        if (examDoc.exists()) {
+          const examData = examDoc.data();
+          setTitle(examData.title);
+          setDescription(examData.description || "");
+          setQuestions(examData.questions || []);
+        } else {
+          alert("Exam not found");
+          router.push("/dashboard");
+        }
+      } catch (error) {
+        console.error("Error fetching exam:", error);
+        alert("Failed to load exam");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchExam();
+  }, [id, router]);
+
+  const addQuestion = () => {
+    setQuestions([
+      ...questions,
+      {
+        id: Date.now().toString(),
+        type: "mcq",
+        text: "",
+        options: ["", "", "", ""],
+        correctOption: 0,
+        points: 1,
+      },
+    ]);
+  };
+
+  const parseQuestionText = (text, questionIndex) => {
+    const lines = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (lines.length >= 2) {
+      const questionText = lines[0];
+      const options = lines.slice(1, 5);
+
+      if (options.length >= 2) {
+        const updatedQuestions = [...questions];
+        while (options.length < 4) {
+          options.push("");
+        }
+
+        updatedQuestions[questionIndex] = {
+          ...updatedQuestions[questionIndex],
+          text: questionText,
+          options: options,
+        };
+
+        setQuestions(updatedQuestions);
+        return;
+      }
+    }
+
+    updateQuestion(questionIndex, "text", text);
+  };
+
+  const parseBulkQuestions = (text, questionType) => {
+    const questionBlocks = text
+      .split(/\n\s*[*•\d+.)\]]\s*/)
+      .map((block) => block.trim())
+      .filter((block) => block.length > 0);
+
+    const newQuestions = [];
+
+    questionBlocks.forEach((block) => {
+      if (questionType === "mcq") {
+        const lines = block
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+
+        if (lines.length >= 1) {
+          const questionText = lines[0];
+          const options = [];
+
+          for (let i = 1; i < lines.length && options.length < 4; i++) {
+            const line = lines[i];
+            const cleanedOption = line
+              .replace(/^[A-Da-d][.)\]:]?\s*/, "")
+              .trim();
+            if (cleanedOption) {
+              options.push(cleanedOption);
+            }
+          }
+
+          while (options.length < 4) {
+            options.push("");
+          }
+
+          newQuestions.push({
+            id: Date.now().toString() + Math.random(),
+            type: "mcq",
+            text: questionText,
+            options: options.slice(0, 4),
+            correctOption: 0,
+            points: 1,
+          });
+        }
+      } else if (questionType === "truefalse") {
+        if (block.trim()) {
+          newQuestions.push({
+            id: Date.now().toString() + Math.random(),
+            type: "truefalse",
+            text: block.trim(),
+            correctAnswer: true,
+            points: 1,
+          });
+        }
+      } else if (questionType === "fillblank") {
+        const lines = block
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+
+        if (lines.length >= 1) {
+          const questionText = lines[0];
+          const answerLine = lines.find((line) =>
+            line.toLowerCase().startsWith("answer:")
+          );
+          const answer = answerLine
+            ? answerLine.replace(/^answer:\s*/i, "").trim()
+            : "";
+
+          newQuestions.push({
+            id: Date.now().toString() + Math.random(),
+            type: "fillblank",
+            text: questionText,
+            correctAnswer: answer,
+            points: 1,
+          });
+        }
+      } else if (questionType === "long") {
+        if (block.trim()) {
+          newQuestions.push({
+            id: Date.now().toString() + Math.random(),
+            type: "long",
+            text: block.trim(),
+            options: [],
+            points: 1,
+          });
+        }
+      }
+    });
+
+    return newQuestions;
+  };
+
+  const handleBulkImport = () => {
+    if (!bulkText.trim()) {
+      alert("Please paste some questions");
+      return;
+    }
+
+    const parsedQuestions = parseBulkQuestions(bulkText, bulkQuestionType);
+
+    if (parsedQuestions.length === 0) {
+      alert(
+        "No valid questions found. Make sure each question starts with * or a number."
+      );
+      return;
+    }
+
+    setQuestions([...questions, ...parsedQuestions]);
+    setBulkText("");
+    setShowBulkImport(false);
+    alert(`Successfully imported ${parsedQuestions.length} question(s)!`);
+  };
+
+  const updateQuestion = (index, field, value) => {
+    const updatedQuestions = [...questions];
+    updatedQuestions[index][field] = value;
+    setQuestions(updatedQuestions);
+  };
+
+  const updateOption = (questionIndex, optionIndex, value) => {
+    const updatedQuestions = [...questions];
+    updatedQuestions[questionIndex].options[optionIndex] = value;
+    setQuestions(updatedQuestions);
+  };
+
+  const removeQuestion = (index) => {
+    const updatedQuestions = [...questions];
+    updatedQuestions.splice(index, 1);
+    setQuestions(updatedQuestions);
+  };
+
+  const handleTypeChange = (questionIndex, newType) => {
+    const updatedQuestions = [...questions];
+    const currentQuestion = { ...updatedQuestions[questionIndex] };
+
+    currentQuestion.type = newType;
+
+    if (newType === "mcq") {
+      if (!currentQuestion.options || currentQuestion.options.length === 0) {
+        currentQuestion.options = ["", "", "", ""];
+        currentQuestion.correctOption = 0;
+      }
+      delete currentQuestion.correctAnswer;
+    } else if (newType === "truefalse") {
+      currentQuestion.correctAnswer = true;
+      delete currentQuestion.options;
+      delete currentQuestion.correctOption;
+    } else if (newType === "fillblank") {
+      currentQuestion.correctAnswer = currentQuestion.correctAnswer || "";
+      delete currentQuestion.options;
+      delete currentQuestion.correctOption;
+    } else if (newType === "long") {
+      delete currentQuestion.options;
+      delete currentQuestion.correctOption;
+      delete currentQuestion.correctAnswer;
+    }
+
+    updatedQuestions[questionIndex] = currentQuestion;
+    setQuestions(updatedQuestions);
+  };
+
+  const handleQuestionTextChange = (questionIndex, value) => {
+    const question = questions[questionIndex];
+
+    if (question.type === "mcq") {
+      parseQuestionText(value, questionIndex);
+    } else {
+      updateQuestion(questionIndex, "text", value);
+    }
+  };
+
+  const saveExam = async () => {
+    if (!title.trim()) {
+      alert("Please enter an exam title");
+      return;
+    }
+
+    if (questions.length === 0) {
+      alert("Please add at least one question");
+      return;
+    }
+
+    // Validate questions
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (!q.text.trim()) {
+        alert(`Question ${i + 1} is missing text`);
+        return;
+      }
+
+      if (q.type === "mcq") {
+        const emptyOptions = q.options.filter((opt) => !opt.trim()).length;
+        if (emptyOptions > 0) {
+          alert(`Question ${i + 1} has empty options`);
+          return;
+        }
+      } else if (q.type === "fillblank") {
+        if (!q.correctAnswer || !q.correctAnswer.trim()) {
+          alert(`Question ${i + 1} is missing the correct answer`);
+          return;
+        }
+      }
+    }
+
+    try {
+      setIsSaving(true);
+
+      const examData = {
+        title,
+        description,
+        questions,
+        updatedAt: serverTimestamp(),
+      };
+
+      await updateDoc(doc(db, "exams", id), examData);
+      alert("Exam updated successfully!");
+      router.push(`/dashboard/exam/${id}`);
+    } catch (error) {
+      console.error("Error updating exam:", error);
+      alert("Failed to update exam. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const getQuestionTypeLabel = (type) => {
+    const typeObj = questionTypes.find((t) => t.value === type);
+    return typeObj ? typeObj.label : type;
+  };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto p-4 max-w-4xl">
+        <div className="flex items-center mb-6">
+          <Link href={`/dashboard/exam/${id}`}>
+            <Button isIconOnly variant="light" aria-label="Back">
+              <ArrowLeftIcon size={20} />
+            </Button>
+          </Link>
+          <h1 className="text-2xl font-bold ml-2">Loading Exam...</h1>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-4 max-w-4xl">
+      <div className="flex items-center mb-6">
+        <Link href={`/dashboard/exam/${id}`}>
+          <Button isIconOnly variant="light" aria-label="Back">
+            <ArrowLeftIcon size={20} />
+          </Button>
+        </Link>
+        <h1 className="text-2xl font-bold ml-2">Edit Exam: {title}</h1>
+      </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <h2 className="text-xl font-semibold">Exam Details</h2>
+        </CardHeader>
+        <Divider />
+        <CardBody className="space-y-4">
+          <Input
+            label="Exam Title"
+            placeholder="Enter exam title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            isRequired
+          />
+          <Textarea
+            label="Description (Optional)"
+            placeholder="Enter exam description or instructions"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </CardBody>
+      </Card>
+
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-semibold">
+          Questions ({questions.length})
+        </h2>
+        <div className="flex gap-2">
+          <Button
+            color="secondary"
+            variant="flat"
+            onClick={() => setShowBulkImport(true)}
+          >
+            Bulk Import
+          </Button>
+          <Button
+            color="primary"
+            startContent={<PlusIcon size={16} />}
+            onClick={addQuestion}
+          >
+            Add Question
+          </Button>
+        </div>
+      </div>
+
+      {questions.length === 0 ? (
+        <Card className="text-center p-8">
+          <p className="text-default-500 mb-4">No questions in this exam</p>
+          <Button
+            color="primary"
+            startContent={<PlusIcon size={16} />}
+            onClick={addQuestion}
+            className="mx-auto"
+          >
+            Add Your First Question
+          </Button>
+        </Card>
+      ) : (
+        <Accordion>
+          {questions.map((question, qIndex) => (
+            <AccordionItem
+              key={question.id || qIndex}
+              title={
+                <div className="flex items-center gap-2">
+                  <span>Question {qIndex + 1}</span>
+                  <Chip
+                    size="sm"
+                    color={
+                      question.type === "mcq"
+                        ? "primary"
+                        : question.type === "truefalse"
+                        ? "success"
+                        : question.type === "fillblank"
+                        ? "warning"
+                        : "secondary"
+                    }
+                  >
+                    {getQuestionTypeLabel(question.type)}
+                  </Chip>
+                </div>
+              }
+            >
+              <Card className="mb-4">
+                <CardBody className="space-y-4">
+                  <div className="flex justify-between gap-4">
+                    <Select
+                      label="Question Type"
+                      selectedKeys={[question.type]}
+                      onChange={(e) => handleTypeChange(qIndex, e.target.value)}
+                      className="max-w-xs"
+                    >
+                      {questionTypes.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </Select>
+
+                    <Input
+                      type="number"
+                      label="Points"
+                      min={1}
+                      max={100}
+                      value={question.points.toString()}
+                      onChange={(e) =>
+                        updateQuestion(
+                          qIndex,
+                          "points",
+                          Number.parseInt(e.target.value) || 1
+                        )
+                      }
+                      className="max-w-[100px]"
+                    />
+                  </div>
+
+                  <Textarea
+                    label="Question Text"
+                    placeholder={
+                      question.type === "mcq"
+                        ? "Paste question with options (each on new line):\nWhat is 2+2?\nA. 3\nB. 4\nC. 5\nD. 6"
+                        : question.type === "fillblank"
+                        ? "Enter your question with blanks (use __ for blanks):\nThe capital of France is __."
+                        : "Enter your question"
+                    }
+                    value={question.text}
+                    onChange={(e) =>
+                      handleQuestionTextChange(qIndex, e.target.value)
+                    }
+                    isRequired
+                    minRows={question.type === "mcq" ? 6 : 3}
+                  />
+
+                  {question.type === "mcq" && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium">Options</p>
+                      {question.options.map((option, oIndex) => (
+                        <div key={oIndex} className="flex items-center gap-2">
+                          <Input
+                            placeholder={`Option ${oIndex + 1}`}
+                            value={option}
+                            onChange={(e) =>
+                              updateOption(qIndex, oIndex, e.target.value)
+                            }
+                            className="flex-grow"
+                          />
+                          <Button
+                            isIconOnly
+                            color="primary"
+                            variant={
+                              question.correctOption === oIndex
+                                ? "solid"
+                                : "bordered"
+                            }
+                            onClick={() =>
+                              updateQuestion(qIndex, "correctOption", oIndex)
+                            }
+                            aria-label="Set as correct answer"
+                          >
+                            ✓
+                          </Button>
+                        </div>
+                      ))}
+                      <p className="text-xs text-default-500">
+                        Click ✓ to mark the correct answer. Tip: Paste question
+                        with options above (each on new line) to auto-fill!
+                      </p>
+                    </div>
+                  )}
+
+                  {question.type === "truefalse" && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium">Correct Answer</p>
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1"
+                          color={
+                            question.correctAnswer === true
+                              ? "success"
+                              : "default"
+                          }
+                          variant={
+                            question.correctAnswer === true
+                              ? "solid"
+                              : "bordered"
+                          }
+                          onClick={() =>
+                            updateQuestion(qIndex, "correctAnswer", true)
+                          }
+                        >
+                          True
+                        </Button>
+                        <Button
+                          className="flex-1"
+                          color={
+                            question.correctAnswer === false
+                              ? "success"
+                              : "default"
+                          }
+                          variant={
+                            question.correctAnswer === false
+                              ? "solid"
+                              : "bordered"
+                          }
+                          onClick={() =>
+                            updateQuestion(qIndex, "correctAnswer", false)
+                          }
+                        >
+                          False
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {question.type === "fillblank" && (
+                    <div className="space-y-3">
+                      <Input
+                        label="Correct Answer"
+                        placeholder="Enter the correct answer for the blank"
+                        value={question.correctAnswer || ""}
+                        onChange={(e) =>
+                          updateQuestion(
+                            qIndex,
+                            "correctAnswer",
+                            e.target.value
+                          )
+                        }
+                        isRequired
+                      />
+                      <p className="text-xs text-default-500">
+                        Use __ (double underscore) or [blank] in your question
+                        to indicate where the blank should be.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end">
+                    <Button
+                      color="danger"
+                      variant="light"
+                      startContent={<Trash2Icon size={16} />}
+                      onClick={() => removeQuestion(qIndex)}
+                    >
+                      Remove Question
+                    </Button>
+                  </div>
+                </CardBody>
+              </Card>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      )}
+
+      <div className="flex justify-between mt-8">
+        <Button
+          color="default"
+          variant="flat"
+          onClick={() => router.push(`/dashboard/exam/${id}`)}
+        >
+          Cancel
+        </Button>
+        <Button
+          color="primary"
+          startContent={<SaveIcon size={16} />}
+          onClick={saveExam}
+          isLoading={isSaving}
+        >
+          Save Changes
+        </Button>
+      </div>
+
+      {showBulkImport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <CardHeader className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold">Bulk Import Questions</h2>
+              <Button
+                isIconOnly
+                variant="light"
+                onClick={() => setShowBulkImport(false)}
+              >
+                ✕
+              </Button>
+            </CardHeader>
+            <Divider />
+            <CardBody className="space-y-4">
+              <Select
+                label="Question Type"
+                selectedKeys={[bulkQuestionType]}
+                onChange={(e) => setBulkQuestionType(e.target.value)}
+                className="max-w-xs"
+              >
+                {questionTypes.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </Select>
+
+              <div className="bg-default-100 p-3 rounded-lg text-sm space-y-2">
+                <p className="font-semibold">Format Instructions:</p>
+                <p>• Start each question with * or a number</p>
+                {bulkQuestionType === "mcq" && (
+                  <>
+                    <p>
+                      • For MCQ: Add options on new lines (with A), B), etc. or
+                      without)
+                    </p>
+                    <p className="text-xs text-default-500 mt-2">
+                      Example MCQ:
+                    </p>
+                    <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
+                      {`* What is 2+2?
+A) 3
+B) 4
+C) 5
+D) 6
+* What is the capital of France?
+A) London
+B) Paris
+C) Berlin
+D) Madrid`}
+                    </pre>
+                  </>
+                )}
+                {bulkQuestionType === "truefalse" && (
+                  <>
+                    <p>• For True/False: Just list the questions</p>
+                    <p className="text-xs text-default-500 mt-2">
+                      Example True/False:
+                    </p>
+                    <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
+                      {`* The Earth is flat
+* Water boils at 100°C at sea level
+* The sun revolves around Earth`}
+                    </pre>
+                  </>
+                )}
+                {bulkQuestionType === "fillblank" && (
+                  <>
+                    <p>
+                      • For Fill in the Blank: Use __ for blanks, optionally add
+                      Answer: on next line
+                    </p>
+                    <p className="text-xs text-default-500 mt-2">
+                      Example Fill in the Blank:
+                    </p>
+                    <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
+                      {`* The capital of France is __.
+Answer: Paris
+* Water freezes at __ degrees Celsius.
+Answer: 0`}
+                    </pre>
+                  </>
+                )}
+                {bulkQuestionType === "long" && (
+                  <>
+                    <p>• For Long Answer: Just list the questions</p>
+                    <p className="text-xs text-default-500 mt-2">
+                      Example Long Answer:
+                    </p>
+                    <pre className="text-xs bg-default-200 p-2 rounded mt-1 overflow-x-auto">
+                      {`* Explain the process of photosynthesis
+* Describe the main causes of World War I`}
+                    </pre>
+                  </>
+                )}
+              </div>
+
+              <Textarea
+                label="Paste Questions Here"
+                placeholder="Paste your questions here..."
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                minRows={15}
+              />
+
+              <div className="flex justify-end gap-2">
+                <Button variant="flat" onClick={() => setShowBulkImport(false)}>
+                  Cancel
+                </Button>
+                <Button color="primary" onClick={handleBulkImport}>
+                  Import Questions
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -13,7 +13,12 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { PlusIcon, FileTextIcon, CheckSquareIcon } from "lucide-react";
+import {
+  PlusIcon,
+  FileTextIcon,
+  CheckSquareIcon,
+  EditIcon,
+} from "lucide-react";
 
 export default function Dashboard() {
   const [exams, setExams] = useState([]);
@@ -89,16 +94,28 @@ export default function Dashboard() {
                       <div className="text-sm">
                         <p>
                           Share Code:{" "}
-                          <span className="font-mono bg-gray-100 px-2 py-1 rounded">
+                          <span className="font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
                             {exam.id.substring(0, 6)}
                           </span>
                         </p>
                       </div>
-                      <Link href={`/dashboard/exam/${exam.id}`}>
-                        <Button size="sm" color="secondary" variant="flat">
-                          View Details
-                        </Button>
-                      </Link>
+                      <div className="flex gap-2">
+                        <Link href={`/dashboard/edit-exam/${exam.id}`}>
+                          <Button
+                            size="sm"
+                            color="primary"
+                            variant="flat"
+                            startContent={<EditIcon size={16} />}
+                          >
+                            Edit
+                          </Button>
+                        </Link>
+                        <Link href={`/dashboard/exam/${exam.id}`}>
+                          <Button size="sm" color="secondary" variant="flat">
+                            View Details
+                          </Button>
+                        </Link>
+                      </div>
                     </div>
                   </CardBody>
                 </Card>
