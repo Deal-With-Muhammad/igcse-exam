@@ -26,7 +26,7 @@ export const NavbarWrapper = ({ children }: Props) => {
           <BurguerButton />
         </NavbarContent>
         <h1 className=" font-bold text-base text-center md:text-2xl text-black dark:text-gray-300">
-          ELS IGCSE ICT Online EXAM
+          IGCSE EXAM
         </h1>
         <NavbarContent className="w-full max-md:hidden"></NavbarContent>
         <NavbarContent
