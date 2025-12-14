@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
@@ -20,6 +20,7 @@ import {
   AlertTriangleIcon,
   XIcon,
   CheckCircleIcon,
+  AlertCircle,
 } from "lucide-react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -37,6 +38,9 @@ export default function GradeSubmission({ params }) {
   const [totalScore, setTotalScore] = useState(0);
   const [maxScore, setMaxScore] = useState(0);
 
+  // Refs for scrolling to questions
+  const questionRefs = useRef([]);
+
   useEffect(() => {
     const fetchSubmissionData = async () => {
       try {
@@ -53,7 +57,6 @@ export default function GradeSubmission({ params }) {
           ...submissionDoc.data(),
         };
         setSubmission(submissionData);
-        console.log("Submission Data:", submissionData);
 
         // Fetch exam details
         const examDoc = await getDoc(doc(db, "exams", submissionData.examId));
@@ -66,52 +69,58 @@ export default function GradeSubmission({ params }) {
         const examData = { id: examDoc.id, ...examDoc.data() };
         setExam(examData);
 
-        if (submissionData.graded) {
-          setGrades(submissionData.grades || []);
-          setComments(submissionData.comments || []);
-          setTotalScore(submissionData.totalScore || 0);
+        // Calculate grades (whether saved or not)
+        let calculatedGrades;
+        let calculatedComments;
+
+        if (submissionData.graded && submissionData.grades) {
+          // Use saved grades if already graded
+          calculatedGrades = submissionData.grades;
+          calculatedComments = submissionData.comments || [];
         } else {
           // Auto-calculate grades for objective questions
-          const initialGrades = examData.questions.map((question, index) => {
+          calculatedGrades = examData.questions.map((question, index) => {
             const studentAnswer = submissionData.answers[index];
 
             if (question.type === "mcq") {
-              // Auto-grade MCQ - store as NUMBER
               return studentAnswer === question.correctOption
-                ? Number(question.points) // Convert to number
+                ? Number(question.points)
                 : 0;
             } else if (question.type === "truefalse") {
-              // Auto-grade True/False - store as NUMBER
               return studentAnswer === question.correctAnswer
-                ? Number(question.points) // Convert to number
+                ? Number(question.points)
                 : 0;
             } else if (question.type === "fillblank") {
-              // Auto-grade Fill in the Blank
               const correct = question.correctAnswer?.toLowerCase().trim();
               const answer = studentAnswer?.toLowerCase().trim();
-              return correct === answer ? Number(question.points) : 0; // Convert to number
+              return correct === answer ? Number(question.points) : 0;
             } else {
               // Long answer questions need manual grading
               return 0;
             }
           });
-          const maxPossibleScore = examData.questions.reduce(
-            (total, q) => total + Number(q.points), // ← Ensure Number() here
-            0
-          );
-          setMaxScore(maxPossibleScore);
-
-          const initialComments = examData.questions.map(() => "");
-          setGrades(initialGrades);
-          setComments(initialComments);
+          calculatedComments = examData.questions.map(() => "");
         }
+
+        setGrades(calculatedGrades);
+        setComments(calculatedComments);
+
+        // Calculate total score
+        const total = calculatedGrades.reduce(
+          (sum, grade) => sum + (Number(grade) || 0),
+          0
+        );
+        setTotalScore(total);
 
         // Calculate max possible score
         const maxPossibleScore = examData.questions.reduce(
-          (total, q) => total + q.points,
+          (total, q) => total + Number(q.points),
           0
         );
         setMaxScore(maxPossibleScore);
+
+        // Initialize refs array
+        questionRefs.current = examData.questions.map(() => null);
       } catch (error) {
         console.error("Error fetching data:", error);
       } finally {
@@ -126,19 +135,17 @@ export default function GradeSubmission({ params }) {
     const newGrades = [...grades];
     const maxPoints = exam.questions[index].points;
 
-    // Ensure the grade is a number
     const numericValue = Math.min(Number(value) || 0, maxPoints);
-    newGrades[index] = numericValue; // Store as number, not string
+    newGrades[index] = numericValue;
 
     setGrades(newGrades);
 
-    // Calculate total from NUMBERS, not strings
-    const newTotal = newGrades.reduce((sum, grade) => {
-      return sum + (Number(grade) || 0); // Double-check conversion
-    }, 0);
-
+    // Recalculate total
+    const newTotal = newGrades.reduce(
+      (sum, grade) => sum + (Number(grade) || 0),
+      0
+    );
     setTotalScore(newTotal);
-    console.log(`Grade changed: ${numericValue}, New total: ${newTotal}`);
   };
 
   const handleCommentChange = (index, value) => {
@@ -147,12 +154,29 @@ export default function GradeSubmission({ params }) {
     setComments(newComments);
   };
 
+  const scrollToQuestion = (index) => {
+    if (questionRefs.current[index]) {
+      questionRefs.current[index].scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      // Add a highlight effect
+      questionRefs.current[index].classList.add("ring-4", "ring-warning");
+      setTimeout(() => {
+        questionRefs.current[index].classList.remove("ring-4", "ring-warning");
+      }, 2000);
+    }
+  };
+
   const saveGrades = async () => {
     try {
       setSaving(true);
+
+      // Calculate totalScore directly when saving
       const calculatedTotal = grades.reduce((sum, grade) => {
         return sum + (Number(grade) || 0);
       }, 0);
+
       await updateDoc(doc(db, "submissions", id), {
         grades,
         comments,
@@ -192,6 +216,13 @@ export default function GradeSubmission({ params }) {
   const totalSwitches = submission.totalSwitches || 0;
   const blurEvents =
     submission.switchLog?.filter((log) => log.event === "blur") || [];
+
+  // Find questions that got 0 marks
+  const zeroMarkQuestions = grades
+    .map((grade, index) => (grade === 0 ? index : -1))
+    .filter((index) => index !== -1);
+
+  const percentageScore = maxScore > 0 ? (totalScore / maxScore) * 100 : 0;
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
@@ -239,16 +270,49 @@ export default function GradeSubmission({ params }) {
             <p className="text-sm font-medium mb-1">Current Score</p>
             <div className="flex items-center gap-2">
               <Progress
-                value={(totalScore / maxScore) * 100}
-                color="primary"
+                value={percentageScore}
+                color={percentageScore >= 50 ? "success" : "danger"}
                 className="flex-grow"
                 showValueLabel={true}
               />
-              <span className="font-medium">
+              <span className="font-bold text-lg">
                 {totalScore}/{maxScore}
               </span>
             </div>
+            <p className="text-sm text-default-500 mt-1">
+              {percentageScore.toFixed(1)}%
+            </p>
           </div>
+
+          {/* Show questions with 0 marks */}
+          {zeroMarkQuestions.length > 0 && (
+            <div className="mt-4 p-4 bg-warning-50 rounded-lg border border-warning-200">
+              <div className="flex items-start gap-2 mb-2">
+                <AlertCircle size={20} className="text-warning mt-0.5" />
+                <div className="flex-grow">
+                  <p className="text-sm font-medium text-warning-800">
+                    {zeroMarkQuestions.length} question(s) with 0 marks
+                  </p>
+                  <p className="text-xs text-warning-700 mt-1">
+                    Click to review questions that need attention
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {zeroMarkQuestions.map((qIndex) => (
+                  <Button
+                    key={qIndex}
+                    size="sm"
+                    color="warning"
+                    variant="flat"
+                    onClick={() => scrollToQuestion(qIndex)}
+                  >
+                    Question {qIndex + 1}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </CardBody>
       </Card>
 
@@ -374,9 +438,16 @@ export default function GradeSubmission({ params }) {
             question.type
           );
           const isCorrect = grades[qIndex] === question.points;
+          const gotZero = grades[qIndex] === 0;
 
           return (
-            <Card key={qIndex} className="mb-4">
+            <Card
+              key={qIndex}
+              className={`mb-4 transition-all duration-300 ${
+                gotZero ? "border-l-4 border-l-warning" : ""
+              }`}
+              ref={(el) => (questionRefs.current[qIndex] = el)}
+            >
               <CardHeader>
                 <div className="flex justify-between w-full">
                   <div>
@@ -385,6 +456,11 @@ export default function GradeSubmission({ params }) {
                       {isAutoGraded && (
                         <Chip size="sm" color="secondary" variant="flat">
                           Auto-Graded
+                        </Chip>
+                      )}
+                      {gotZero && (
+                        <Chip size="sm" color="warning" variant="flat">
+                          0 Marks
                         </Chip>
                       )}
                     </div>
@@ -578,7 +654,7 @@ export default function GradeSubmission({ params }) {
           onClick={saveGrades}
           isLoading={saving}
         >
-          Save Grades
+          {submission.graded ? "Update Grades" : "Save Grades"}
         </Button>
       </div>
     </div>
