@@ -21,6 +21,7 @@ import {
   XIcon,
   CheckCircleIcon,
   AlertCircle,
+  EditIcon,
 } from "lucide-react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -33,6 +34,7 @@ export default function GradeSubmission({ params }) {
   const [exam, setExam] = useState(null);
   const [grades, setGrades] = useState([]);
   const [comments, setComments] = useState([]);
+  const [manualOverride, setManualOverride] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [totalScore, setTotalScore] = useState(0);
@@ -72,11 +74,47 @@ export default function GradeSubmission({ params }) {
         // Calculate grades (whether saved or not)
         let calculatedGrades;
         let calculatedComments;
+        let calculatedManualOverride;
 
         if (submissionData.graded && submissionData.grades) {
           // Use saved grades if already graded
           calculatedGrades = submissionData.grades;
           calculatedComments = submissionData.comments || [];
+
+          // Initialize manual override based on saved grades vs auto-calculated
+          calculatedManualOverride = examData.questions.map(
+            (question, index) => {
+              // If it's an auto-graded question type, check if saved grade differs from auto-calculated
+              if (["mcq", "truefalse", "fillblank"].includes(question.type)) {
+                const studentAnswer = submissionData.answers[index];
+                let autoCalculatedGrade = 0;
+
+                if (question.type === "mcq") {
+                  autoCalculatedGrade =
+                    studentAnswer === question.correctOption
+                      ? Number(question.points)
+                      : 0;
+                } else if (question.type === "truefalse") {
+                  const studentBool =
+                    studentAnswer === true || studentAnswer === "true";
+                  const correctBool =
+                    question.correctAnswer === true ||
+                    question.correctAnswer === "true";
+                  autoCalculatedGrade =
+                    studentBool === correctBool ? Number(question.points) : 0;
+                } else if (question.type === "fillblank") {
+                  const correct = question.correctAnswer?.toLowerCase().trim();
+                  const answer = studentAnswer?.toLowerCase().trim();
+                  autoCalculatedGrade =
+                    correct === answer ? Number(question.points) : 0;
+                }
+
+                // If saved grade differs from auto-calculated, mark as manually overridden
+                return calculatedGrades[index] !== autoCalculatedGrade;
+              }
+              return false; // Long answers are always manual
+            }
+          );
         } else {
           // Auto-calculate grades for objective questions
           calculatedGrades = examData.questions.map((question, index) => {
@@ -105,10 +143,14 @@ export default function GradeSubmission({ params }) {
           });
 
           calculatedComments = examData.questions.map(() => "");
+          calculatedManualOverride = examData.questions.map(() => false);
         }
 
         setGrades(calculatedGrades);
         setComments(calculatedComments);
+        setManualOverride(
+          calculatedManualOverride || examData.questions.map(() => false)
+        );
 
         // Calculate total score
         const total = calculatedGrades.reduce(
@@ -157,6 +199,38 @@ export default function GradeSubmission({ params }) {
     const newComments = [...comments];
     newComments[index] = value;
     setComments(newComments);
+  };
+
+  const toggleManualOverride = (index) => {
+    const newManualOverride = [...manualOverride];
+    newManualOverride[index] = !newManualOverride[index];
+    setManualOverride(newManualOverride);
+
+    // If turning off manual override and it's an auto-graded question, recalculate
+    if (!newManualOverride[index]) {
+      const question = exam.questions[index];
+      const studentAnswer = submission.answers[index];
+
+      if (question.type === "mcq") {
+        const autoGrade =
+          studentAnswer === question.correctOption
+            ? Number(question.points)
+            : 0;
+        handleGradeChange(index, autoGrade);
+      } else if (question.type === "truefalse") {
+        const studentBool = studentAnswer === true || studentAnswer === "true";
+        const correctBool =
+          question.correctAnswer === true || question.correctAnswer === "true";
+        const autoGrade =
+          studentBool === correctBool ? Number(question.points) : 0;
+        handleGradeChange(index, autoGrade);
+      } else if (question.type === "fillblank") {
+        const correct = question.correctAnswer?.toLowerCase().trim();
+        const answer = studentAnswer?.toLowerCase().trim();
+        const autoGrade = correct === answer ? Number(question.points) : 0;
+        handleGradeChange(index, autoGrade);
+      }
+    }
   };
 
   const scrollToQuestion = (index) => {
@@ -318,6 +392,23 @@ export default function GradeSubmission({ params }) {
               </div>
             </div>
           )}
+
+          {/* Manual Override Info Banner */}
+          <div className="mt-4 p-4 bg-primary-50 rounded-lg border border-primary-200">
+            <div className="flex items-start gap-2">
+              <EditIcon size={20} className="text-primary mt-0.5" />
+              <div className="flex-grow">
+                <p className="text-sm font-medium text-primary-800 mb-1">
+                  Manual Grading Mode Available
+                </p>
+                <p className="text-xs text-primary-700">
+                  For auto-graded questions (MCQ, True/False,
+                  Fill-in-the-blank), click the "Override" button to manually
+                  adjust scores.
+                </p>
+              </div>
+            </div>
+          </div>
         </CardBody>
       </Card>
 
@@ -442,7 +533,8 @@ export default function GradeSubmission({ params }) {
           const isAutoGraded = ["mcq", "truefalse", "fillblank"].includes(
             question.type
           );
-          const isCorrect = grades[qIndex] === question.points;
+          const autoCalculatedCorrect =
+            isAutoGraded && grades[qIndex] === question.points;
           const gotZero = grades[qIndex] === 0;
 
           return (
@@ -450,7 +542,7 @@ export default function GradeSubmission({ params }) {
               key={qIndex}
               className={`mb-4 transition-all duration-300 ${
                 gotZero ? "border-l-4 border-l-warning" : ""
-              }`}
+              } ${manualOverride[qIndex] ? "border-r-4 border-r-primary" : ""}`}
               ref={(el) => (questionRefs.current[qIndex] = el)}
             >
               <CardHeader>
@@ -458,9 +550,22 @@ export default function GradeSubmission({ params }) {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-medium">Question {qIndex + 1}</h3>
-                      {isAutoGraded && (
+                      {isAutoGraded && !manualOverride[qIndex] && (
                         <Chip size="sm" color="secondary" variant="flat">
                           Auto-Graded
+                        </Chip>
+                      )}
+                      {manualOverride[qIndex] && (
+                        <Chip size="sm" color="primary" variant="flat">
+                          <div className="flex items-center gap-1">
+                            <EditIcon size={12} />
+                            Manual Override
+                          </div>
+                        </Chip>
+                      )}
+                      {!isAutoGraded && !manualOverride[qIndex] && (
+                        <Chip size="sm" color="warning" variant="flat">
+                          Manual Grading
                         </Chip>
                       )}
                       {gotZero && (
@@ -481,6 +586,20 @@ export default function GradeSubmission({ params }) {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {isAutoGraded && (
+                      <Button
+                        size="sm"
+                        variant="flat"
+                        color={manualOverride[qIndex] ? "primary" : "default"}
+                        onClick={() => toggleManualOverride(qIndex)}
+                        className="text-xs h-8"
+                        startContent={
+                          manualOverride[qIndex] && <EditIcon size={12} />
+                        }
+                      >
+                        {manualOverride[qIndex] ? "Manual" : "Override"}
+                      </Button>
+                    )}
                     <Input
                       type="number"
                       min={0}
@@ -490,7 +609,7 @@ export default function GradeSubmission({ params }) {
                         handleGradeChange(qIndex, e.target.value)
                       }
                       className="w-20"
-                      isReadOnly={isAutoGraded}
+                      isReadOnly={isAutoGraded && !manualOverride[qIndex]}
                       endContent={
                         <span className="text-small text-default-500">
                           /{question.points}
@@ -516,98 +635,126 @@ export default function GradeSubmission({ params }) {
                           key={oIndex}
                           className={`p-2 rounded mb-2 flex items-center gap-2 ${
                             submission.answers[qIndex] === oIndex
-                              ? isCorrect
+                              ? !manualOverride[qIndex] && autoCalculatedCorrect
                                 ? "bg-success-50 border border-success"
-                                : "bg-danger-50 border border-danger"
-                              : "bg-gray-50"
+                                : !manualOverride[qIndex] &&
+                                  !autoCalculatedCorrect
+                                ? "bg-danger-50 border border-danger"
+                                : "bg-default-50 border"
+                              : "bg-default-50"
                           } ${
-                            question.correctOption === oIndex
+                            question.correctOption === oIndex &&
+                            !manualOverride[qIndex]
                               ? "border-l-4 border-l-success"
                               : ""
                           }`}
                         >
-                          {question.correctOption === oIndex && (
-                            <CheckIcon size={16} className="text-success" />
-                          )}
+                          {question.correctOption === oIndex &&
+                            !manualOverride[qIndex] && (
+                              <CheckIcon size={16} className="text-success" />
+                            )}
                           {submission.answers[qIndex] === oIndex &&
-                            question.correctOption !== oIndex && (
+                            question.correctOption !== oIndex &&
+                            !manualOverride[qIndex] && (
                               <XIcon size={16} className="text-danger" />
                             )}
                           <span>{option}</span>
                         </div>
                       ))}
-                      <Chip
-                        color={isCorrect ? "success" : "danger"}
-                        variant="flat"
-                        size="sm"
-                      >
-                        {isCorrect ? "Correct Answer" : "Incorrect Answer"}
-                      </Chip>
+                      {!manualOverride[qIndex] && (
+                        <Chip
+                          color={autoCalculatedCorrect ? "success" : "danger"}
+                          variant="flat"
+                          size="sm"
+                        >
+                          {autoCalculatedCorrect
+                            ? "Correct Answer"
+                            : "Incorrect Answer"}
+                        </Chip>
+                      )}
                     </div>
                   ) : question.type === "truefalse" ? (
                     <div>
                       <div
                         className={`p-3 rounded mb-2 ${
-                          isCorrect
+                          !manualOverride[qIndex] && autoCalculatedCorrect
                             ? "bg-success-50 border border-success"
-                            : "bg-danger-50 border border-danger"
+                            : !manualOverride[qIndex] && !autoCalculatedCorrect
+                            ? "bg-danger-50 border border-danger"
+                            : "bg-default-50 border"
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          {isCorrect ? (
-                            <CheckIcon size={16} className="text-success" />
-                          ) : (
-                            <XIcon size={16} className="text-danger" />
-                          )}
+                          {!manualOverride[qIndex] &&
+                            (autoCalculatedCorrect ? (
+                              <CheckIcon size={16} className="text-success" />
+                            ) : (
+                              <XIcon size={16} className="text-danger" />
+                            ))}
                           <span className="font-medium">
                             Student answered:{" "}
                             {submission.answers[qIndex] ? "True" : "False"}
                           </span>
                         </div>
-                        <p className="text-sm text-default-500 mt-1">
-                          Correct answer:{" "}
-                          {question.correctAnswer ? "True" : "False"}
-                        </p>
+                        {!manualOverride[qIndex] && (
+                          <p className="text-sm text-default-500 mt-1">
+                            Correct answer:{" "}
+                            {question.correctAnswer ? "True" : "False"}
+                          </p>
+                        )}
                       </div>
-                      <Chip
-                        color={isCorrect ? "success" : "danger"}
-                        variant="flat"
-                        size="sm"
-                      >
-                        {isCorrect ? "Correct Answer" : "Incorrect Answer"}
-                      </Chip>
+                      {!manualOverride[qIndex] && (
+                        <Chip
+                          color={autoCalculatedCorrect ? "success" : "danger"}
+                          variant="flat"
+                          size="sm"
+                        >
+                          {autoCalculatedCorrect
+                            ? "Correct Answer"
+                            : "Incorrect Answer"}
+                        </Chip>
+                      )}
                     </div>
                   ) : question.type === "fillblank" ? (
                     <div>
                       <div
                         className={`p-3 rounded mb-2 ${
-                          isCorrect
+                          !manualOverride[qIndex] && autoCalculatedCorrect
                             ? "bg-success-50 border border-success"
-                            : "bg-danger-50 border border-danger"
+                            : !manualOverride[qIndex] && !autoCalculatedCorrect
+                            ? "bg-danger-50 border border-danger"
+                            : "bg-default-50 border"
                         }`}
                       >
                         <div className="flex items-center gap-2 mb-2">
-                          {isCorrect ? (
-                            <CheckIcon size={16} className="text-success" />
-                          ) : (
-                            <XIcon size={16} className="text-danger" />
-                          )}
+                          {!manualOverride[qIndex] &&
+                            (autoCalculatedCorrect ? (
+                              <CheckIcon size={16} className="text-success" />
+                            ) : (
+                              <XIcon size={16} className="text-danger" />
+                            ))}
                           <span className="font-medium">Student's answer:</span>
                         </div>
                         <p className="ml-6">
                           {submission.answers[qIndex] || "No answer provided"}
                         </p>
-                        <p className="text-sm text-default-500 mt-2 ml-6">
-                          Expected: {question.correctAnswer}
-                        </p>
+                        {!manualOverride[qIndex] && (
+                          <p className="text-sm text-default-500 mt-2 ml-6">
+                            Expected: {question.correctAnswer}
+                          </p>
+                        )}
                       </div>
-                      <Chip
-                        color={isCorrect ? "success" : "danger"}
-                        variant="flat"
-                        size="sm"
-                      >
-                        {isCorrect ? "Correct Answer" : "Incorrect Answer"}
-                      </Chip>
+                      {!manualOverride[qIndex] && (
+                        <Chip
+                          color={autoCalculatedCorrect ? "success" : "danger"}
+                          variant="flat"
+                          size="sm"
+                        >
+                          {autoCalculatedCorrect
+                            ? "Correct Answer"
+                            : "Incorrect Answer"}
+                        </Chip>
+                      )}
                     </div>
                   ) : (
                     <div>
