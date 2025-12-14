@@ -87,9 +87,13 @@ export default function GradeSubmission({ params }) {
                 ? Number(question.points)
                 : 0;
             } else if (question.type === "truefalse") {
-              return studentAnswer === question.correctAnswer
-                ? Number(question.points)
-                : 0;
+              // Convert both to boolean for comparison to handle type mismatches
+              const studentBool =
+                studentAnswer === true || studentAnswer === "true";
+              const correctBool =
+                question.correctAnswer === true ||
+                question.correctAnswer === "true";
+              return studentBool === correctBool ? Number(question.points) : 0;
             } else if (question.type === "fillblank") {
               const correct = question.correctAnswer?.toLowerCase().trim();
               const answer = studentAnswer?.toLowerCase().trim();
@@ -99,6 +103,7 @@ export default function GradeSubmission({ params }) {
               return 0;
             }
           });
+
           calculatedComments = examData.questions.map(() => "");
         }
 
