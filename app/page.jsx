@@ -7,10 +7,9 @@ export default function Home() {
       <Card className="max-w-md w-full p-8">
         <CardHeader className="flex flex-col items-center gap-3">
           <div className="flex flex-col items-center">
-            <h1 className="text-3xl font-bold">ELS IGCSE ICT TEST</h1>
-            <p className="text-default-500 text-center mt-1">
-              Created by Muhammad Ahmad for ELS IGCSE ICT students
-            </p>
+            <h1 className="text-3xl font-bold">
+              ELS HIGHER EDUCATION ONLINE EXAM
+            </h1>
           </div>
         </CardHeader>
         <Divider />
