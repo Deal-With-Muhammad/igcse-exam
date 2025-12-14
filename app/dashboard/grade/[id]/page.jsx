@@ -76,25 +76,30 @@ export default function GradeSubmission({ params }) {
             const studentAnswer = submissionData.answers[index];
 
             if (question.type === "mcq") {
-              // Auto-grade MCQ
+              // Auto-grade MCQ - store as NUMBER
               return studentAnswer === question.correctOption
-                ? question.points
+                ? Number(question.points) // Convert to number
                 : 0;
             } else if (question.type === "truefalse") {
-              // Auto-grade True/False
+              // Auto-grade True/False - store as NUMBER
               return studentAnswer === question.correctAnswer
-                ? question.points
+                ? Number(question.points) // Convert to number
                 : 0;
             } else if (question.type === "fillblank") {
-              // Auto-grade Fill in the Blank (case-insensitive comparison)
+              // Auto-grade Fill in the Blank
               const correct = question.correctAnswer?.toLowerCase().trim();
               const answer = studentAnswer?.toLowerCase().trim();
-              return correct === answer ? question.points : 0;
+              return correct === answer ? Number(question.points) : 0; // Convert to number
             } else {
               // Long answer questions need manual grading
               return 0;
             }
           });
+          const maxPossibleScore = examData.questions.reduce(
+            (total, q) => total + Number(q.points), // ← Ensure Number() here
+            0
+          );
+          setMaxScore(maxPossibleScore);
 
           const initialComments = examData.questions.map(() => "");
           setGrades(initialGrades);
@@ -121,21 +126,21 @@ export default function GradeSubmission({ params }) {
     const newGrades = [...grades];
     const maxPoints = exam.questions[index].points;
 
-    // 1. Calculate the new grade value, ensuring it doesn't exceed max points
-    const newGradeValue = Math.min(Number(value) || 0, maxPoints);
-    newGrades[index] = newGradeValue;
+    // Ensure the grade is a number
+    const numericValue = Math.min(Number(value) || 0, maxPoints);
+    newGrades[index] = numericValue; // Store as number, not string
 
-    // 2. Set the new grades array
     setGrades(newGrades);
 
-    // 3. Immediately calculate the new total score from the 'newGrades' array
+    // Calculate total from NUMBERS, not strings
     const newTotal = newGrades.reduce((sum, grade) => {
-      return sum + (Number(grade) || 0);
+      return sum + (Number(grade) || 0); // Double-check conversion
     }, 0);
 
-    // 4. Set the new total score
     setTotalScore(newTotal);
+    console.log(`Grade changed: ${numericValue}, New total: ${newTotal}`);
   };
+
   const handleCommentChange = (index, value) => {
     const newComments = [...comments];
     newComments[index] = value;
@@ -145,11 +150,13 @@ export default function GradeSubmission({ params }) {
   const saveGrades = async () => {
     try {
       setSaving(true);
-
+      const calculatedTotal = grades.reduce((sum, grade) => {
+        return sum + (Number(grade) || 0);
+      }, 0);
       await updateDoc(doc(db, "submissions", id), {
         grades,
         comments,
-        totalScore,
+        totalScore: calculatedTotal,
         maxScore,
         graded: true,
         gradedAt: new Date(),
