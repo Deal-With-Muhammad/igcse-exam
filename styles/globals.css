@@ -6,8 +6,27 @@ html,
 body {
   padding: 0;
   margin: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 * {
   box-sizing: border-box;
+}
+
+.prose-exam {
+  font-family: var(--font-serif), Georgia, serif;
+  line-height: 1.65;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+.symbol-btn {
+  transition: all 0.15s ease;
+}
+.symbol-btn:hover {
+  transform: translateY(-1px);
 }
