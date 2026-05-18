@@ -1,8 +1,10 @@
 "use client";
 
-import { Card, CardBody, CardHeader, Chip, Divider, Input, Radio, RadioGroup, Textarea } from "@heroui/react";
+import { Card, CardBody, CardHeader, Chip, Divider, Radio, RadioGroup } from "@heroui/react";
 import type { Answer, Question } from "@/types";
 import { QUESTION_TYPE_LABELS } from "@/lib/constants";
+import { StudentLineInput, StudentTextarea } from "./student-input";
+import { QuestionTimer } from "./question-timer";
 
 interface Props {
   question: Question;
@@ -10,15 +12,18 @@ interface Props {
   onChange: (v: Answer) => void;
   index: number;
   total: number;
+  onTimeUp?: () => void;
 }
 
-export function QuestionRunner({ question, answer, onChange, index, total }: Props) {
+export function QuestionRunner({ question, answer, onChange, index, total, onTimeUp }: Props) {
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex justify-between items-start w-full gap-3">
           <div className="flex-1">
-            <h2 className="text-lg font-semibold mb-2">Question {index + 1} <span className="text-sm font-normal text-default-500">of {total}</span></h2>
+            <h2 className="text-lg font-semibold mb-2">
+              Question {index + 1} <span className="text-sm font-normal text-default-500">of {total}</span>
+            </h2>
             <div className="prose-exam whitespace-pre-wrap text-default-800 dark:text-default-200">{question.text}</div>
             {question.image_url && (
               <img src={question.image_url} alt="question" className="mt-3 rounded border border-default-200 max-h-80" />
@@ -27,6 +32,9 @@ export function QuestionRunner({ question, answer, onChange, index, total }: Pro
           <div className="flex flex-col gap-1 items-end flex-shrink-0">
             <Chip size="sm" variant="flat">{QUESTION_TYPE_LABELS[question.type]}</Chip>
             <Chip size="sm" variant="flat" color="primary">{question.points} pt{question.points !== 1 ? "s" : ""}</Chip>
+            {question.time_limit_seconds != null && onTimeUp && (
+              <QuestionTimer questionId={question.id} seconds={question.time_limit_seconds} onTimeUp={onTimeUp} />
+            )}
           </div>
         </div>
       </CardHeader>
@@ -65,23 +73,15 @@ export function QuestionRunner({ question, answer, onChange, index, total }: Pro
         )}
 
         {question.type === "fillblank" && (
-          <Input
-            placeholder="Type your answer..."
-            value={typeof answer === "string" ? answer : ""}
-            onChange={(e) => onChange(e.target.value)}
-            variant="bordered"
-            size="lg"
-          />
+          <StudentLineInput value={typeof answer === "string" ? answer : ""} onChange={(v) => onChange(v)} />
         )}
 
-        {(question.type === "short" || question.type === "long") && (
-          <Textarea
-            placeholder="Type your answer..."
-            value={typeof answer === "string" ? answer : ""}
-            onChange={(e) => onChange(e.target.value)}
-            minRows={question.type === "short" ? 3 : 8}
-            variant="bordered"
-          />
+        {question.type === "short" && (
+          <StudentTextarea value={typeof answer === "string" ? answer : ""} onChange={(v) => onChange(v)} minRows={3} />
+        )}
+
+        {question.type === "long" && (
+          <StudentTextarea value={typeof answer === "string" ? answer : ""} onChange={(v) => onChange(v)} minRows={8} />
         )}
       </CardBody>
     </Card>

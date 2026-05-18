@@ -47,10 +47,12 @@ export function ExamRunner({ exam }: { exam: Exam }) {
 
   const { focused, timeLeft } = useProctor({
     graceSeconds: GRACE_SECONDS,
+    maxWarnings: exam.max_warnings,
+    terminateOnSwitch: exam.terminate_on_switch,
     enabled: !state.terminated && !submitting,
     onSwitch: (ev) => {
       update((p) => ({ ...p, switchLog: [...p.switchLog, ev], warnings: ev.event === "blur" ? p.warnings + 1 : p.warnings }));
-      if (ev.event === "blur") setShowWarn(true);
+      if (ev.event === "blur" && exam.terminate_on_switch) setShowWarn(true);
       if (ev.event === "focus") setShowWarn(false);
     },
     onTerminate: () => {
@@ -60,7 +62,6 @@ export function ExamRunner({ exam }: { exam: Exam }) {
     },
   });
 
-  // protect against missing registration data
   useEffect(() => {
     if (!state.studentName || !state.studentClass) {
       toast.error("Please register first");
@@ -70,12 +71,12 @@ export function ExamRunner({ exam }: { exam: Exam }) {
 
   const q = exam.questions[state.currentQuestion];
   const setAnswer = (val: Answer) => update((p) => {
-    const a = [...p.answers];
-    a[p.currentQuestion] = val;
-    return { ...p, answers: a };
+    const a = [...p.answers]; a[p.currentQuestion] = val; return { ...p, answers: a };
   });
-
   const goTo = (i: number) => update((p) => ({ ...p, currentQuestion: Math.max(0, Math.min(exam.questions.length - 1, i)) }));
+  const advance = () => {
+    if (state.currentQuestion < exam.questions.length - 1) goTo(state.currentQuestion + 1);
+  };
 
   const submit = async (auto = false) => {
     if (submittedRef.current) return;
@@ -100,7 +101,7 @@ export function ExamRunner({ exam }: { exam: Exam }) {
       const { error } = await supabase.from("submissions").insert(payload);
       if (error) {
         submittedRef.current = false;
-        toast.error("Submit failed — answers are safe, retrying preserves your work. " + error.message);
+        toast.error("Submit failed — answers are safe. " + error.message);
         setSubmitting(false);
         return;
       }
@@ -117,6 +118,8 @@ export function ExamRunner({ exam }: { exam: Exam }) {
 
   const progress = ((state.currentQuestion + 1) / exam.questions.length) * 100;
   const answered = state.answers.filter((a) => a !== "" && a !== null && a !== undefined).length;
+  const warningsUsed = state.warnings;
+  const showWarningChip = warningsUsed > 0 && exam.terminate_on_switch;
 
   return (
     <>
@@ -131,9 +134,9 @@ export function ExamRunner({ exam }: { exam: Exam }) {
               <ExamTimer startedAt={state.startedAt} totalMinutes={exam.time_limit_minutes} onTimeUp={() => submit(true)} />
               <div className="flex items-center gap-1 text-xs">
                 {focused ? <Eye size={14} className="text-success" /> : <EyeOff size={14} className="text-danger" />}
-                <span className="hidden sm:inline">{focused ? "Focused" : `${timeLeft}s`}</span>
+                <span className="hidden sm:inline">{focused ? "Focused" : exam.terminate_on_switch ? `${timeLeft}s` : "Switched"}</span>
               </div>
-              {state.warnings > 0 && <Chip color="warning" size="sm">⚠️ {state.warnings}</Chip>}
+              {showWarningChip && <Chip color="warning" size="sm">⚠️ {warningsUsed}/{exam.max_warnings}</Chip>}
               <Chip color="success" size="sm" variant="flat" startContent={<Save size={12} />} className="hidden md:flex">saved</Chip>
             </div>
           </div>
@@ -156,9 +159,7 @@ export function ExamRunner({ exam }: { exam: Exam }) {
                     color={isAnswered ? "success" : "default"}
                     onPress={() => goTo(i)}
                     className="min-w-[36px] flex-shrink-0"
-                  >
-                    {i + 1}
-                  </Button>
+                  >{i + 1}</Button>
                 );
               })}
             </div>
@@ -175,7 +176,14 @@ export function ExamRunner({ exam }: { exam: Exam }) {
             </CardBody></Card>
           )}
 
-          <QuestionRunner question={q} answer={state.answers[state.currentQuestion]} onChange={setAnswer} index={state.currentQuestion} total={exam.questions.length} />
+          <QuestionRunner
+            question={q}
+            answer={state.answers[state.currentQuestion]}
+            onChange={setAnswer}
+            index={state.currentQuestion}
+            total={exam.questions.length}
+            onTimeUp={advance}
+          />
 
           <div className="flex justify-between mt-6 pb-8">
             <Button variant="flat" startContent={<ArrowLeft size={16} />} isDisabled={state.currentQuestion === 0} onPress={() => goTo(state.currentQuestion - 1)}>Previous</Button>
@@ -188,7 +196,7 @@ export function ExamRunner({ exam }: { exam: Exam }) {
         </main>
       </div>
 
-      <WarningModal isOpen={showWarn && !state.terminated} timeLeft={timeLeft} warnings={state.warnings} />
+      <WarningModal isOpen={showWarn && !state.terminated} timeLeft={timeLeft} warnings={state.warnings} maxWarnings={exam.max_warnings} />
       <TerminationModal isOpen={showTerm} warnings={state.warnings} switches={state.switchLog.filter((s) => s.event === "blur").length} onClose={() => submit(true)} />
     </>
   );

@@ -5,6 +5,14 @@ export interface Profile {
   email: string;
   full_name: string;
   role: UserRole;
+  class_id: string | null;
+  created_at: string;
+}
+
+export interface Class {
+  id: string;
+  name: string;
+  sort_order: number;
   created_at: string;
 }
 
@@ -19,6 +27,10 @@ export interface BaseQuestion {
   points: number;
   image_url?: string | null;
   reference_images?: string[];
+  /** Number of writing lines reserved on the PDF (0 = none). */
+  lines_for_pdf?: number;
+  /** Optional per-question countdown in seconds. null/undefined = no timer. */
+  time_limit_seconds?: number | null;
 }
 
 export interface MCQQuestion extends BaseQuestion {
@@ -81,9 +93,15 @@ export interface Exam {
   subject: string;
   level: string;
   part: string;
-  time_limit_minutes: number;
+  /** null = no overall time limit. */
+  time_limit_minutes: number | null;
   total_marks: number;
   template_id: string | null;
+  class_id: string | null;
+  /** If false, switching tabs only logs warnings — never auto-submits. */
+  terminate_on_switch: boolean;
+  /** Number of focus-loss events allowed before termination (when enabled). */
+  max_warnings: number;
   reference_images: string[];
   questions: Question[];
   created_by: string;

@@ -1,19 +1,18 @@
 "use client";
 
-import { Card, CardBody, CardHeader, Divider, Input, Select, SelectItem, Textarea, Autocomplete, AutocompleteItem } from "@heroui/react";
-import { CURRICULA, SUBJECTS, LEVELS } from "@/lib/constants";
-import type { Curriculum, Template } from "@/types";
+import { Card, CardBody, CardHeader, Divider, Input, Select, SelectItem, Autocomplete, AutocompleteItem } from "@heroui/react";
+import { CURRICULA, SUBJECTS } from "@/lib/constants";
+import type { Class, Curriculum, Template } from "@/types";
 import { MultiImageUploader } from "./image-uploader";
 
 export interface ExamMeta {
   title: string;
-  description: string;
   curriculum: Curriculum;
   subject: string;
   level: string;
   part: string;
-  time_limit_minutes: number;
   template_id: string | null;
+  class_id: string | null;
   reference_images: string[];
 }
 
@@ -21,9 +20,11 @@ interface Props {
   meta: ExamMeta;
   onChange: (m: ExamMeta) => void;
   templates: Template[];
+  classes: Class[];
+  lockClass?: boolean;
 }
 
-export function ExamMetaCard({ meta, onChange, templates }: Props) {
+export function ExamMetaCard({ meta, onChange, templates, classes, lockClass }: Props) {
   const set = <K extends keyof ExamMeta>(k: K, v: ExamMeta[K]) => onChange({ ...meta, [k]: v });
 
   return (
@@ -40,20 +41,24 @@ export function ExamMetaCard({ meta, onChange, templates }: Props) {
           <Autocomplete label="Subject" selectedKey={meta.subject} onSelectionChange={(k) => set("subject", String(k ?? ""))} onInputChange={(v) => set("subject", v)} allowsCustomValue isRequired>
             {SUBJECTS.map((s) => <AutocompleteItem key={s}>{s}</AutocompleteItem>)}
           </Autocomplete>
-          <Autocomplete label="Level / Year" selectedKey={meta.level} onSelectionChange={(k) => set("level", String(k ?? ""))} onInputChange={(v) => set("level", v)} allowsCustomValue>
-            {LEVELS.map((l) => <AutocompleteItem key={l}>{l}</AutocompleteItem>)}
-          </Autocomplete>
+          <Select
+            label="Class"
+            selectedKeys={meta.class_id ? [meta.class_id] : []}
+            onChange={(e) => set("class_id", e.target.value || null)}
+            isDisabled={lockClass}
+            description={lockClass ? "Pinned to your assigned class" : ""}
+          >
+            {classes.map((c) => <SelectItem key={c.id}>{c.name}</SelectItem>)}
+          </Select>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Input label="Part / Paper" value={meta.part} onChange={(e) => set("part", e.target.value)} placeholder="e.g. Part 1" />
-          <Input type="number" label="Time limit (min)" min={1} value={String(meta.time_limit_minutes)} onChange={(e) => set("time_limit_minutes", Math.max(1, Number.parseInt(e.target.value) || 60))} />
+          <Input label="Level / Year (free text)" value={meta.level} onChange={(e) => set("level", e.target.value)} placeholder="e.g. Year 10" description="Shown on the PDF" />
           <Select label="PDF Template" selectedKeys={meta.template_id ? [meta.template_id] : []} onChange={(e) => set("template_id", e.target.value || null)}>
             {templates.map((t) => <SelectItem key={t.id}>{t.name}{t.is_default ? " (default)" : ""}</SelectItem>)}
           </Select>
         </div>
-
-        <Textarea label="Description / Instructions for students (optional)" value={meta.description} onChange={(e) => set("description", e.target.value)} minRows={2} />
 
         <div>
           <p className="text-sm font-medium mb-2">Reference images (shown to students at start)</p>

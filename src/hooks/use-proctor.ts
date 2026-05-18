@@ -4,13 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import type { SwitchEvent } from "@/types";
 
 interface Options {
+  /** Seconds the student may stay away before that single blur counts as the "terminating" event. */
   graceSeconds: number;
+  /** Total number of warnings allowed; when terminateOnSwitch is true, the (N+1)th blur terminates. */
+  maxWarnings: number;
+  /** If false, blurs are still logged but the exam is never auto-submitted. */
+  terminateOnSwitch: boolean;
   onTerminate: () => void;
   onSwitch: (ev: SwitchEvent) => void;
   enabled: boolean;
 }
 
-export function useProctor({ graceSeconds, onTerminate, onSwitch, enabled }: Options) {
+export function useProctor({ graceSeconds, maxWarnings, terminateOnSwitch, onTerminate, onSwitch, enabled }: Options) {
   const [focused, setFocused] = useState(true);
   const [timeLeft, setTimeLeft] = useState(graceSeconds);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -39,20 +44,18 @@ export function useProctor({ graceSeconds, onTerminate, onSwitch, enabled }: Opt
       if (blurredAtRef.current !== null) return;
       blurredAtRef.current = Date.now();
       warningCountRef.current += 1;
-      const ev: SwitchEvent = {
-        event: "blur",
-        timestamp: new Date().toISOString(),
-        warningNumber: warningCountRef.current,
-      };
-      onSwitch(ev);
+      const warning = warningCountRef.current;
+      onSwitch({ event: "blur", timestamp: new Date().toISOString(), warningNumber: warning });
       setFocused(false);
       setTimeLeft(graceSeconds);
       clearTimer();
+      // If termination is disabled OR we still have warnings remaining, don't start the kill timer.
+      if (!terminateOnSwitch || warning <= maxWarnings) return;
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
             clearTimer();
-            onSwitch({ event: "terminated", timestamp: new Date().toISOString(), reason: `Exceeded ${graceSeconds}s away` });
+            onSwitch({ event: "terminated", timestamp: new Date().toISOString(), reason: `Exceeded ${graceSeconds}s away after ${maxWarnings} warning(s)` });
             onTerminate();
             return 0;
           }
@@ -61,11 +64,7 @@ export function useProctor({ graceSeconds, onTerminate, onSwitch, enabled }: Opt
       }, 1000);
     };
 
-    const onVisibility = () => {
-      if (document.hidden) onBlur();
-      else onFocus();
-    };
-
+    const onVisibility = () => { document.hidden ? onBlur() : onFocus(); };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "F12" ||
         (e.ctrlKey && e.shiftKey && (e.key === "I" || e.key === "C" || e.key === "J")) ||
@@ -90,7 +89,7 @@ export function useProctor({ graceSeconds, onTerminate, onSwitch, enabled }: Opt
       document.removeEventListener("contextmenu", onCtx);
       clearTimer();
     };
-  }, [enabled, graceSeconds, onTerminate, onSwitch]);
+  }, [enabled, graceSeconds, maxWarnings, terminateOnSwitch, onTerminate, onSwitch]);
 
   return { focused, timeLeft, warnings: warningCountRef.current };
 }

@@ -71,7 +71,7 @@ function drawHeader(ctx: RenderCtx, exam: Exam, template: Template | null, logo:
   const row1Y = ctx.y;
   doc.text(`Subject: ${exam.subject}`, MARGIN_X, row1Y);
   if (exam.part) doc.text(`Part: ${exam.part}`, MARGIN_X + 70, row1Y);
-  doc.text(`Time: ${formatTime(exam.time_limit_minutes)}`, MARGIN_X + 120, row1Y);
+  doc.text(`Time: ${exam.time_limit_minutes != null ? formatTime(exam.time_limit_minutes) : "—"}`, MARGIN_X + 120, row1Y);
   doc.text(`Total Marks: ${exam.total_marks}`, MARGIN_X + 160, row1Y);
   ctx.y += 6;
   doc.text("Name: ____________________________", MARGIN_X, ctx.y);
@@ -146,6 +146,22 @@ function drawQuestion(ctx: RenderCtx, q: Question, i: number, imgs: Record<strin
     ctx.y += h + 3;
   }
 
+  const drawAnswerLines = (count: number) => {
+    for (let l = 0; l < count; l++) {
+      ensureSpace(ctx, 7);
+      doc.setDrawColor(200);
+      doc.line(indent, ctx.y + 4, PAGE_WIDTH - MARGIN_X, ctx.y + 4);
+      ctx.y += 7;
+    }
+  };
+
+  const defaultLinesFor = (type: Question["type"]) => {
+    if (type === "short") return 3;
+    if (type === "long") return 8;
+    return 0;
+  };
+  const requestedLines = q.lines_for_pdf ?? defaultLinesFor(q.type);
+
   if (q.type === "mcq") {
     doc.setFontSize(10);
     q.options.forEach((opt, j) => {
@@ -155,20 +171,23 @@ function drawQuestion(ctx: RenderCtx, q: Question, i: number, imgs: Record<strin
       doc.text(wrappedOpt, indent + 4, ctx.y);
       ctx.y += wrappedOpt.length * 5;
     });
+    if (requestedLines > 0) {
+      ctx.y += 2;
+      drawAnswerLines(requestedLines);
+    }
   } else if (q.type === "truefalse") {
     doc.text("True  /  False", indent + 4, ctx.y);
     ctx.y += 6;
+    if (requestedLines > 0) drawAnswerLines(requestedLines);
   } else if (q.type === "fillblank") {
-    doc.text("Answer: __________________________", indent, ctx.y);
-    ctx.y += 6;
-  } else {
-    const lines = q.type === "short" ? 3 : 8;
-    for (let l = 0; l < lines; l++) {
-      ensureSpace(ctx, 7);
-      doc.setDrawColor(200);
-      doc.line(indent, ctx.y + 4, PAGE_WIDTH - MARGIN_X, ctx.y + 4);
-      ctx.y += 7;
+    if (requestedLines > 0) {
+      drawAnswerLines(requestedLines);
+    } else {
+      doc.text("Answer: __________________________", indent, ctx.y);
+      ctx.y += 6;
     }
+  } else {
+    drawAnswerLines(requestedLines);
   }
   ctx.y += 3;
 }

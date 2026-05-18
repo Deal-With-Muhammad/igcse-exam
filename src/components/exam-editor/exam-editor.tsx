@@ -10,8 +10,9 @@ import { createClient } from "@/lib/supabase/client";
 import { calcMaxScore } from "@/lib/exam/grading";
 import { makeQuestion } from "@/lib/exam/factory";
 import { generateShareCode } from "@/lib/share-code";
-import type { Exam, Question, QuestionType, Template } from "@/types";
+import type { Class, Exam, Profile, Question, QuestionType, Template } from "@/types";
 import { ExamMetaCard, type ExamMeta } from "./exam-meta-card";
+import { ExamSettingsCard, type ExamSettings } from "./exam-settings-card";
 import { QuestionCard } from "./question-card";
 import { BulkImportModal } from "./bulk-import-modal";
 
@@ -19,22 +20,33 @@ interface Props {
   mode: "create" | "edit";
   initialExam?: Exam;
   templates: Template[];
+  classes: Class[];
+  me: Profile;
 }
 
-export function ExamEditor({ mode, initialExam, templates }: Props) {
+export function ExamEditor({ mode, initialExam, templates, classes, me }: Props) {
   const router = useRouter();
   const defaultTemplate = templates.find((t) => t.is_default) || templates[0] || null;
+  const teacherLocked = me.role === "teacher" && me.class_id !== null;
+
   const [meta, setMeta] = useState<ExamMeta>(() => ({
     title: initialExam?.title ?? "",
-    description: initialExam?.description ?? "",
     curriculum: initialExam?.curriculum ?? "igcse",
     subject: initialExam?.subject ?? "",
     level: initialExam?.level ?? "",
     part: initialExam?.part ?? "",
-    time_limit_minutes: initialExam?.time_limit_minutes ?? 60,
     template_id: initialExam?.template_id ?? defaultTemplate?.id ?? null,
+    class_id: initialExam?.class_id ?? (teacherLocked ? me.class_id : null),
     reference_images: initialExam?.reference_images ?? [],
   }));
+
+  const [settings, setSettings] = useState<ExamSettings>(() => ({
+    hasTimer: initialExam?.time_limit_minutes != null,
+    time_limit_minutes: initialExam?.time_limit_minutes ?? null,
+    terminate_on_switch: initialExam?.terminate_on_switch ?? true,
+    max_warnings: initialExam?.max_warnings ?? 1,
+  }));
+
   const [questions, setQuestions] = useState<Question[]>(initialExam?.questions ?? []);
   const [saving, setSaving] = useState(false);
   const bulkModal = useDisclosure();
@@ -42,9 +54,7 @@ export function ExamEditor({ mode, initialExam, templates }: Props) {
   const updateQ = (i: number, q: Question) => {
     const arr = [...questions]; arr[i] = q; setQuestions(arr);
   };
-  const removeQ = (i: number) => {
-    const arr = [...questions]; arr.splice(i, 1); setQuestions(arr);
-  };
+  const removeQ = (i: number) => { const arr = [...questions]; arr.splice(i, 1); setQuestions(arr); };
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir; if (j < 0 || j >= questions.length) return;
     const arr = [...questions];
@@ -79,13 +89,16 @@ export function ExamEditor({ mode, initialExam, templates }: Props) {
       const total = calcMaxScore(questions);
       const payload = {
         title: meta.title,
-        description: meta.description,
+        description: "",
         curriculum: meta.curriculum,
         subject: meta.subject,
         level: meta.level,
         part: meta.part,
-        time_limit_minutes: meta.time_limit_minutes,
         template_id: meta.template_id,
+        class_id: meta.class_id,
+        time_limit_minutes: settings.hasTimer ? settings.time_limit_minutes : null,
+        terminate_on_switch: settings.terminate_on_switch,
+        max_warnings: settings.max_warnings,
         reference_images: meta.reference_images,
         total_marks: total,
         questions: questions as unknown as Record<string, unknown>[],
@@ -124,7 +137,10 @@ export function ExamEditor({ mode, initialExam, templates }: Props) {
         </Button>
       </div>
 
-      <div className="mb-6"><ExamMetaCard meta={meta} onChange={setMeta} templates={templates} /></div>
+      <div className="space-y-4 mb-6">
+        <ExamMetaCard meta={meta} onChange={setMeta} templates={templates} classes={classes} lockClass={teacherLocked} />
+        <ExamSettingsCard settings={settings} onChange={setSettings} />
+      </div>
 
       <div className="flex flex-wrap justify-between items-center mb-3 gap-2">
         <div>
@@ -146,16 +162,9 @@ export function ExamEditor({ mode, initialExam, templates }: Props) {
       ) : (
         <div className="space-y-3">
           {questions.map((q, i) => (
-            <QuestionCard
-              key={q.id}
-              question={q}
-              index={i}
-              total={questions.length}
-              onUpdate={(nq) => updateQ(i, nq)}
-              onRemove={() => removeQ(i)}
-              onMoveUp={() => move(i, -1)}
-              onMoveDown={() => move(i, 1)}
-            />
+            <QuestionCard key={q.id} question={q} index={i} total={questions.length}
+              onUpdate={(nq) => updateQ(i, nq)} onRemove={() => removeQ(i)}
+              onMoveUp={() => move(i, -1)} onMoveDown={() => move(i, 1)} />
           ))}
         </div>
       )}

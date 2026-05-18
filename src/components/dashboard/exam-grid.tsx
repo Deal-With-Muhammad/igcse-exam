@@ -17,6 +17,7 @@ export interface ExamRow {
   total_marks: number;
   created_at: string;
   created_by: string;
+  class_id: string | null;
   questions: unknown[];
 }
 

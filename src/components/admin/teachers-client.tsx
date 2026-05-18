@@ -2,17 +2,26 @@
 
 import { Button, Card, CardBody, Chip, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow, useDisclosure } from "@heroui/react";
 import { Plus, ShieldCheck, GraduationCap, Trash2 } from "lucide-react";
-import { useState } from "react";
-import type { Profile } from "@/types";
+import { useEffect, useState } from "react";
+import type { Class, Profile } from "@/types";
 import { TeacherCreateModal } from "./teacher-create-modal";
 import { TeacherDeleteModal } from "./teacher-delete-modal";
+import { createClient } from "@/lib/supabase/client";
 
 export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
   const [profiles, setProfiles] = useState(initial);
+  const [classes, setClasses] = useState<Class[]>([]);
   const create = useDisclosure();
   const del = useDisclosure();
   const [toDelete, setToDelete] = useState<Profile | null>(null);
 
+  useEffect(() => {
+    createClient().from("classes").select("*").order("sort_order").then(({ data }) => {
+      setClasses((data ?? []) as Class[]);
+    });
+  }, []);
+
+  const classNameById = (id: string | null) => classes.find((c) => c.id === id)?.name ?? "—";
   const onCreated = (p: Profile) => setProfiles((arr) => [p, ...arr]);
   const onDeleted = (id: string) => setProfiles((arr) => arr.filter((p) => p.id !== id));
 
@@ -21,7 +30,7 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">Teachers & Admins</h1>
-          <p className="text-default-500 text-sm">Manage accounts and roles</p>
+          <p className="text-default-500 text-sm">Manage accounts, roles, and class assignments</p>
         </div>
         <Button color="primary" startContent={<Plus size={16} />} onPress={create.onOpen}>
           Add Teacher
@@ -35,6 +44,7 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
               <TableColumn>NAME</TableColumn>
               <TableColumn>EMAIL</TableColumn>
               <TableColumn>ROLE</TableColumn>
+              <TableColumn>CLASS</TableColumn>
               <TableColumn>JOINED</TableColumn>
               <TableColumn>ACTIONS</TableColumn>
             </TableHeader>
@@ -48,15 +58,10 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
                       {p.role}
                     </Chip>
                   </TableCell>
+                  <TableCell className="text-sm">{p.role === "admin" ? "All" : classNameById(p.class_id)}</TableCell>
                   <TableCell>{new Date(p.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
-                    <Button
-                      isIconOnly
-                      size="sm"
-                      variant="light"
-                      color="danger"
-                      onPress={() => { setToDelete(p); del.onOpen(); }}
-                    >
+                    <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => { setToDelete(p); del.onOpen(); }}>
                       <Trash2 size={16} />
                     </Button>
                   </TableCell>

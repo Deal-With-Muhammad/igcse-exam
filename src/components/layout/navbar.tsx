@@ -1,7 +1,7 @@
 "use client";
 
 import { Navbar, NavbarBrand, NavbarContent, NavbarItem, Button, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Avatar, Chip } from "@heroui/react";
-import { LogOut, ShieldCheck, GraduationCap, FileText, Users, Layout } from "lucide-react";
+import { LogOut, ShieldCheck, GraduationCap, FileText, Users, Layout, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -57,6 +57,11 @@ export function AppNavbar({ profile }: Props) {
             <NavbarItem>
               <Button as={Link} href="/admin/templates" variant="light" startContent={<Layout size={16} />} size="sm">
                 Templates
+              </Button>
+            </NavbarItem>
+            <NavbarItem>
+              <Button as={Link} href="/admin/classes" variant="light" startContent={<BookOpen size={16} />} size="sm">
+                Classes
               </Button>
             </NavbarItem>
           </>

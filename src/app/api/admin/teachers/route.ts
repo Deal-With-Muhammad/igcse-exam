@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   if (me?.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
-  const { email, password, full_name, role } = body;
+  const { email, password, full_name, role, class_id } = body;
   if (!email || !password || !full_name) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
@@ -34,6 +34,7 @@ export async function POST(req: Request) {
       email,
       full_name,
       role: role === "admin" ? "admin" : "teacher",
+      class_id: class_id || null,
     })
     .select("*")
     .single();
