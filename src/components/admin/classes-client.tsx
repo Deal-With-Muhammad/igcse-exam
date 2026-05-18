@@ -11,6 +11,8 @@ export function ClassesClient({ classes: initial }: { classes: Class[] }) {
   const [classes, setClasses] = useState(initial);
   const [newName, setNewName] = useState("");
   const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
 
   const add = async () => {
     if (!newName.trim()) return;
@@ -29,8 +31,12 @@ export function ClassesClient({ classes: initial }: { classes: Class[] }) {
     toast.success("Class added");
   };
 
-  const rename = async (c: Class, newValue: string) => {
-    if (!newValue.trim() || newValue === c.name) return;
+  const startEdit = (c: Class) => { setEditingId(c.id); setEditValue(c.name); };
+
+  const commitEdit = async (c: Class) => {
+    const newValue = editValue.trim();
+    setEditingId(null);
+    if (!newValue || newValue === c.name) return;
     const supabase = createClient();
     const { error } = await supabase.from("classes").update({ name: newValue }).eq("id", c.id);
     if (error) { toast.error(error.message); return; }
@@ -81,44 +87,45 @@ export function ClassesClient({ classes: initial }: { classes: Class[] }) {
             <TableHeader>
               <TableColumn>ORDER</TableColumn>
               <TableColumn>NAME</TableColumn>
-              <TableColumn>ACTIONS</TableColumn>
+              <TableColumn className="w-48">ACTIONS</TableColumn>
             </TableHeader>
             <TableBody emptyContent="No classes yet">
               {classes.map((c, i) => (
-                <ClassRow key={c.id} cls={c} index={i} total={classes.length} onRename={rename} onMove={move} onRemove={remove} />
+                <TableRow key={c.id}>
+                  <TableCell><span className="text-xs text-default-500">{c.sort_order}</span></TableCell>
+                  <TableCell>
+                    {editingId === c.id ? (
+                      <Input
+                        size="sm"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={() => commitEdit(c)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitEdit(c);
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        autoFocus
+                      />
+                    ) : (
+                      <button onClick={() => startEdit(c)} className="text-left font-medium hover:underline">{c.name}</button>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button isIconOnly size="sm" variant="light" onPress={() => move(i, -1)} isDisabled={i === 0}><ArrowUp size={14} /></Button>
+                      <Button isIconOnly size="sm" variant="light" onPress={() => move(i, 1)} isDisabled={i === classes.length - 1}><ArrowDown size={14} /></Button>
+                      {editingId === c.id && (
+                        <Button isIconOnly size="sm" variant="flat" color="primary" onPress={() => commitEdit(c)}><Save size={14} /></Button>
+                      )}
+                      <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => remove(c)}><Trash2 size={14} /></Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ))}
             </TableBody>
           </Table>
         </CardBody>
       </Card>
     </div>
-  );
-}
-
-function ClassRow({ cls, index, total, onRename, onMove, onRemove }: { cls: Class; index: number; total: number; onRename: (c: Class, v: string) => void; onMove: (i: number, d: -1 | 1) => void; onRemove: (c: Class) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(cls.name);
-  const commit = () => { setEditing(false); if (val !== cls.name) onRename(cls, val); };
-  return (
-    <TableRow>
-      <TableCell><span className="text-xs text-default-500">{cls.sort_order}</span></TableCell>
-      <TableCell>
-        {editing ? (
-          <Input size="sm" value={val} onChange={(e) => setVal(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && commit()} autoFocus />
-        ) : (
-          <button onClick={() => setEditing(true)} className="text-left font-medium hover:underline">{cls.name}</button>
-        )}
-      </TableCell>
-      <TableCell>
-        <div className="flex gap-1">
-          <Button isIconOnly size="sm" variant="light" onPress={() => onMove(index, -1)} isDisabled={index === 0}><ArrowUp size={14} /></Button>
-          <Button isIconOnly size="sm" variant="light" onPress={() => onMove(index, 1)} isDisabled={index === total - 1}><ArrowDown size={14} /></Button>
-          {editing ? (
-            <Button isIconOnly size="sm" variant="flat" color="primary" onPress={commit}><Save size={14} /></Button>
-          ) : null}
-          <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => onRemove(cls)}><Trash2 size={14} /></Button>
-        </div>
-      </TableCell>
-    </TableRow>
   );
 }
