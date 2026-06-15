@@ -1,29 +1,70 @@
 "use client";
 
 import { Button, Card, CardBody, Chip, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow, useDisclosure } from "@heroui/react";
-import { Plus, ShieldCheck, GraduationCap, Trash2 } from "lucide-react";
+import { Plus, ShieldCheck, GraduationCap, Trash2, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Class, Profile } from "@/types";
+import type { Class, Profile, TeacherClass } from "@/types";
 import { TeacherCreateModal } from "./teacher-create-modal";
+import { TeacherEditModal } from "./teacher-edit-modal";
 import { TeacherDeleteModal } from "./teacher-delete-modal";
 import { createClient } from "@/lib/supabase/client";
 
 export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
   const [profiles, setProfiles] = useState(initial);
   const [classes, setClasses] = useState<Class[]>([]);
+  // teacher id -> the class ids they're assigned to
+  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
   const create = useDisclosure();
+  const edit = useDisclosure();
   const del = useDisclosure();
+  const [toEdit, setToEdit] = useState<Profile | null>(null);
   const [toDelete, setToDelete] = useState<Profile | null>(null);
 
   useEffect(() => {
-    createClient().from("classes").select("*").order("sort_order").then(({ data }) => {
+    const supabase = createClient();
+    supabase.from("classes").select("*").order("sort_order").then(({ data }) => {
       setClasses((data ?? []) as Class[]);
+    });
+    supabase.from("teacher_classes").select("teacher_id, class_id").then(({ data }) => {
+      const map: Record<string, string[]> = {};
+      for (const row of (data ?? []) as TeacherClass[]) {
+        (map[row.teacher_id] ??= []).push(row.class_id);
+      }
+      setAssignments(map);
     });
   }, []);
 
-  const classNameById = (id: string | null) => classes.find((c) => c.id === id)?.name ?? "—";
-  const onCreated = (p: Profile) => setProfiles((arr) => [p, ...arr]);
-  const onDeleted = (id: string) => setProfiles((arr) => arr.filter((p) => p.id !== id));
+  const classNameById = (id: string) => classes.find((c) => c.id === id)?.name ?? id;
+
+  const onCreated = (p: Profile, classIds: string[]) => {
+    setProfiles((arr) => [p, ...arr]);
+    setAssignments((m) => ({ ...m, [p.id]: classIds }));
+  };
+  const onUpdated = (p: Profile, classIds: string[]) => {
+    setProfiles((arr) => arr.map((x) => (x.id === p.id ? p : x)));
+    setAssignments((m) => ({ ...m, [p.id]: classIds }));
+  };
+  const onDeleted = (id: string) => {
+    setProfiles((arr) => arr.filter((p) => p.id !== id));
+    setAssignments((m) => {
+      const next = { ...m };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const renderClasses = (p: Profile) => {
+    if (p.role === "admin") return <span className="text-sm text-default-500">All classes</span>;
+    const ids = assignments[p.id] ?? [];
+    if (ids.length === 0) return <span className="text-sm text-default-400">All (no class set)</span>;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {ids.map((id) => (
+          <Chip key={id} size="sm" variant="flat">{classNameById(id)}</Chip>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="container mx-auto p-4 md:p-6 max-w-6xl">
@@ -44,7 +85,7 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
               <TableColumn>NAME</TableColumn>
               <TableColumn>EMAIL</TableColumn>
               <TableColumn>ROLE</TableColumn>
-              <TableColumn>CLASS</TableColumn>
+              <TableColumn>CLASSES</TableColumn>
               <TableColumn>JOINED</TableColumn>
               <TableColumn>ACTIONS</TableColumn>
             </TableHeader>
@@ -58,12 +99,17 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
                       {p.role}
                     </Chip>
                   </TableCell>
-                  <TableCell className="text-sm">{p.role === "admin" ? "All" : classNameById(p.class_id)}</TableCell>
+                  <TableCell>{renderClasses(p)}</TableCell>
                   <TableCell>{new Date(p.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
-                    <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => { setToDelete(p); del.onOpen(); }}>
-                      <Trash2 size={16} />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button isIconOnly size="sm" variant="light" onPress={() => { setToEdit(p); edit.onOpen(); }}>
+                        <Pencil size={16} />
+                      </Button>
+                      <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => { setToDelete(p); del.onOpen(); }}>
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -73,6 +119,14 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
       </Card>
 
       <TeacherCreateModal isOpen={create.isOpen} onClose={create.onClose} onCreated={onCreated} />
+      <TeacherEditModal
+        isOpen={edit.isOpen}
+        onClose={edit.onClose}
+        profile={toEdit}
+        classes={classes}
+        initialClassIds={toEdit ? assignments[toEdit.id] ?? [] : []}
+        onUpdated={onUpdated}
+      />
       <TeacherDeleteModal isOpen={del.isOpen} onClose={del.onClose} profile={toDelete} onDeleted={onDeleted} />
     </div>
   );

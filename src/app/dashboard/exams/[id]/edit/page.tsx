@@ -8,10 +8,11 @@ export default async function EditExamPage({ params }: { params: Promise<{ id: s
   const me = await requireSignedIn();
   const { id } = await params;
   const supabase = await createClient();
-  const [{ data: exam }, { data: templates }, { data: classes }] = await Promise.all([
+  const [{ data: exam }, { data: templates }, { data: classes }, { data: tc }] = await Promise.all([
     supabase.from("exams").select("*").eq("id", id).single(),
     supabase.from("templates").select("*").order("is_default", { ascending: false }),
     supabase.from("classes").select("*").order("sort_order"),
+    supabase.from("teacher_classes").select("class_id").eq("teacher_id", me.id),
   ]);
   if (!exam) notFound();
   return (
@@ -21,6 +22,7 @@ export default async function EditExamPage({ params }: { params: Promise<{ id: s
       templates={(templates ?? []) as Template[]}
       classes={(classes ?? []) as Class[]}
       me={me}
+      myClassIds={(tc ?? []).map((r) => r.class_id)}
     />
   );
 }

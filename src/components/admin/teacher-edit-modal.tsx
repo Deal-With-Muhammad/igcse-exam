@@ -4,52 +4,63 @@ import { Button, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import type { Class, Profile, UserRole } from "@/types";
-import { createClient } from "@/lib/supabase/client";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onCreated: (p: Profile, classIds: string[]) => void;
+  profile: Profile | null;
+  classes: Class[];
+  initialClassIds: string[];
+  onUpdated: (p: Profile, classIds: string[]) => void;
 }
 
-export function TeacherCreateModal({ isOpen, onClose, onCreated }: Props) {
-  const [email, setEmail] = useState("");
+export function TeacherEditModal({ isOpen, onClose, profile, classes, initialClassIds, onUpdated }: Props) {
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("teacher");
   const [classIds, setClassIds] = useState<Set<string>>(new Set());
-  const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
-    const supabase = createClient();
-    supabase.from("classes").select("*").order("sort_order").then(({ data }) => {
-      setClasses((data ?? []) as Class[]);
-    });
-  }, [isOpen]);
+    if (!isOpen || !profile) return;
+    setName(profile.full_name || "");
+    setEmail(profile.email || "");
+    setPassword("");
+    setRole(profile.role);
+    setClassIds(new Set(initialClassIds));
+  }, [isOpen, profile, initialClassIds]);
 
   const submit = async () => {
-    if (!email.trim() || !password || !name.trim()) {
-      toast.error("Fill all fields");
+    if (!profile) return;
+    if (!name.trim()) {
+      toast.error("Name is required");
       return;
     }
-    const selected = Array.from(classIds);
+    if (!email.trim()) {
+      toast.error("Email is required");
+      return;
+    }
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/teachers", {
-        method: "POST",
+      const res = await fetch(`/api/admin/teachers/${profile.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, full_name: name, role, class_ids: selected }),
+        body: JSON.stringify({
+          full_name: name,
+          email,
+          password: password || undefined,
+          role,
+          class_ids: Array.from(classIds),
+        }),
       });
       const body = await res.json();
       if (!res.ok) {
         toast.error(body.error || "Failed");
         return;
       }
-      onCreated(body.profile, body.class_ids ?? []);
-      toast.success("Account created");
-      setEmail(""); setName(""); setPassword(""); setRole("teacher"); setClassIds(new Set());
+      onUpdated(body.profile, body.class_ids ?? []);
+      toast.success("Account updated");
       onClose();
     } finally {
       setLoading(false);
@@ -59,11 +70,11 @@ export function TeacherCreateModal({ isOpen, onClose, onCreated }: Props) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} placement="center">
       <ModalContent>
-        <ModalHeader>Add Teacher / Admin</ModalHeader>
+        <ModalHeader>Edit {profile?.full_name || profile?.email}</ModalHeader>
         <ModalBody className="space-y-3">
           <Input label="Full name" value={name} onChange={(e) => setName(e.target.value)} isRequired />
           <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} isRequired />
-          <Input label="Initial password" type="text" value={password} onChange={(e) => setPassword(e.target.value)} description="They can change it after sign-in" isRequired />
+          <Input label="Reset password" type="text" value={password} onChange={(e) => setPassword(e.target.value)} description="Leave blank to keep the current password" />
           <Select label="Role" selectedKeys={[role]} onChange={(e) => setRole((e.target.value || "teacher") as UserRole)}>
             <SelectItem key="teacher">Teacher</SelectItem>
             <SelectItem key="admin">Admin</SelectItem>
@@ -83,7 +94,7 @@ export function TeacherCreateModal({ isOpen, onClose, onCreated }: Props) {
         </ModalBody>
         <ModalFooter>
           <Button variant="light" onPress={onClose}>Cancel</Button>
-          <Button color="primary" onPress={submit} isLoading={loading}>Create</Button>
+          <Button color="primary" onPress={submit} isLoading={loading}>Save</Button>
         </ModalFooter>
       </ModalContent>
     </Modal>

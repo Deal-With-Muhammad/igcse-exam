@@ -5,7 +5,6 @@ export interface Profile {
   email: string;
   full_name: string;
   role: UserRole;
-  class_id: string | null;
   created_at: string;
 }
 
@@ -13,6 +12,13 @@ export interface Class {
   id: string;
   name: string;
   sort_order: number;
+  created_at: string;
+}
+
+/** Many-to-many link: which classes a teacher is assigned to. */
+export interface TeacherClass {
+  teacher_id: string;
+  class_id: string;
   created_at: string;
 }
 

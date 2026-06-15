@@ -22,12 +22,24 @@ interface Props {
   templates: Template[];
   classes: Class[];
   me: Profile;
+  /** Class ids the signed-in teacher is assigned to (empty for admins/unassigned). */
+  myClassIds: string[];
 }
 
-export function ExamEditor({ mode, initialExam, templates, classes, me }: Props) {
+export function ExamEditor({ mode, initialExam, templates, classes, me, myClassIds }: Props) {
   const router = useRouter();
   const defaultTemplate = templates.find((t) => t.is_default) || templates[0] || null;
-  const teacherLocked = me.role === "teacher" && me.class_id !== null;
+  const isTeacher = me.role === "teacher";
+  const hasAssignedClasses = isTeacher && myClassIds.length > 0;
+
+  // Teachers can only pin an exam to a class they're assigned to. Admins and
+  // unassigned teachers can choose any class. Keep the exam's existing class
+  // selectable even if it's outside the teacher's current set.
+  const selectableClasses = hasAssignedClasses
+    ? classes.filter((c) => myClassIds.includes(c.id) || c.id === initialExam?.class_id)
+    : classes;
+  // Lock the picker only when there's exactly one option.
+  const teacherLocked = hasAssignedClasses && selectableClasses.length === 1;
 
   const [meta, setMeta] = useState<ExamMeta>(() => ({
     title: initialExam?.title ?? "",
@@ -36,7 +48,7 @@ export function ExamEditor({ mode, initialExam, templates, classes, me }: Props)
     level: initialExam?.level ?? "",
     part: initialExam?.part ?? "",
     template_id: initialExam?.template_id ?? defaultTemplate?.id ?? null,
-    class_id: initialExam?.class_id ?? (teacherLocked ? me.class_id : null),
+    class_id: initialExam?.class_id ?? (hasAssignedClasses ? myClassIds[0] : null),
     reference_images: initialExam?.reference_images ?? [],
   }));
 
@@ -138,7 +150,7 @@ export function ExamEditor({ mode, initialExam, templates, classes, me }: Props)
       </div>
 
       <div className="space-y-4 mb-6">
-        <ExamMetaCard meta={meta} onChange={setMeta} templates={templates} classes={classes} lockClass={teacherLocked} />
+        <ExamMetaCard meta={meta} onChange={setMeta} templates={templates} classes={selectableClasses} lockClass={teacherLocked} />
         <ExamSettingsCard settings={settings} onChange={setSettings} />
       </div>
 

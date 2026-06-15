@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "create-admin": "tsx scripts/create-admin.ts",
+    "migrate": "tsx scripts/run-migration.ts",
     "migrate-firebase": "tsx scripts/migrate-firebase.ts"
   },
   "dependencies": {
@@ -35,6 +36,7 @@
   "devDependencies": {
     "@types/katex": "^0.16.7",
     "@types/node": "^22.10.5",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "autoprefixer": "^10.4.20",
@@ -42,6 +44,7 @@
     "eslint": "^9.18.0",
     "eslint-config-next": "16.2.6",
     "firebase": "^12.13.0",
+    "pg": "^8.21.0",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.0",

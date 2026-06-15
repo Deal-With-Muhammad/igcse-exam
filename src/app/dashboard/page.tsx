@@ -11,10 +11,18 @@ export default async function DashboardPage() {
     .select("id, share_code, title, subject, level, curriculum, total_marks, created_at, created_by, class_id, questions")
     .order("created_at", { ascending: false });
 
-  // Teachers with a class assignment only see exams pinned to their class
-  // (plus exams they personally created). Admins and unassigned teachers see all.
-  if (profile.role === "teacher" && profile.class_id) {
-    examQuery = examQuery.or(`class_id.eq.${profile.class_id},created_by.eq.${profile.id}`);
+  // Teachers with class assignments only see exams pinned to any of their
+  // classes (plus exams they personally created). Admins and unassigned
+  // teachers see all.
+  if (profile.role === "teacher") {
+    const { data: tc } = await supabase
+      .from("teacher_classes")
+      .select("class_id")
+      .eq("teacher_id", profile.id);
+    const classIds = (tc ?? []).map((r) => r.class_id);
+    if (classIds.length > 0) {
+      examQuery = examQuery.or(`class_id.in.(${classIds.join(",")}),created_by.eq.${profile.id}`);
+    }
   }
 
   const subQuery = supabase
