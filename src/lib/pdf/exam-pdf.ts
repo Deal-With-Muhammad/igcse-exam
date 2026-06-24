@@ -6,6 +6,44 @@ const PAGE_HEIGHT = 297;
 const PAGE_WIDTH = 210;
 const FOOTER_Y = PAGE_HEIGHT - 12;
 
+// jsPDF's built-in fonts only cover WinAnsi (Latin-1), so superscripts,
+// subscripts and most math symbols (√ ≤ ≥ ≠ π θ → ∑ …) don't render. We embed
+// DejaVu Sans (broad Unicode coverage) and use it for all body text so every
+// special character and formula prints correctly.
+const BODY_FONT = "DejaVuSans";
+
+function abToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+// Fetch + base64-encode the fonts once, then reuse across exports.
+let fontCache: { normal: string; bold: string } | null = null;
+async function loadFontData() {
+  if (fontCache) return fontCache;
+  const [normal, bold] = await Promise.all([
+    fetch("/fonts/DejaVuSans.ttf").then((r) => r.arrayBuffer()),
+    fetch("/fonts/DejaVuSans-Bold.ttf").then((r) => r.arrayBuffer()),
+  ]);
+  fontCache = { normal: abToBase64(normal), bold: abToBase64(bold) };
+  return fontCache;
+}
+
+function registerFonts(doc: jsPDF, data: { normal: string; bold: string }) {
+  doc.addFileToVFS("DejaVuSans.ttf", data.normal);
+  doc.addFont("DejaVuSans.ttf", BODY_FONT, "normal");
+  doc.addFileToVFS("DejaVuSans-Bold.ttf", data.bold);
+  doc.addFont("DejaVuSans-Bold.ttf", BODY_FONT, "bold");
+  // No oblique file — alias italic to the normal face so setFont(_, "italic")
+  // never throws (it just renders upright).
+  doc.addFont("DejaVuSans.ttf", BODY_FONT, "italic");
+}
+
 interface RenderCtx {
   doc: jsPDF;
   y: number;
@@ -67,7 +105,7 @@ function drawHeader(ctx: RenderCtx, exam: Exam, template: Template | null, logo:
   ctx.y = y + 28;
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BODY_FONT, "normal");
   const row1Y = ctx.y;
   doc.text(`Subject: ${exam.subject}`, MARGIN_X, row1Y);
   if (exam.part) doc.text(`Part: ${exam.part}`, MARGIN_X + 70, row1Y);
@@ -91,11 +129,11 @@ function drawInfoBlocks(ctx: RenderCtx, template: Template | null) {
   const writeBlock = (title: string, lines: string[]) => {
     if (lines.length === 0) return;
     ensureSpace(ctx, 10 + lines.length * 4);
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BODY_FONT, "bold");
     doc.setFontSize(9);
     doc.text(title, MARGIN_X, ctx.y);
     ctx.y += 4;
-    doc.setFont("helvetica", "normal");
+    doc.setFont(BODY_FONT, "normal");
     doc.setFontSize(9);
     lines.forEach((line) => {
       const wrapped = doc.splitTextToSize("• " + line, PAGE_WIDTH - 2 * MARGIN_X) as string[];
@@ -109,7 +147,7 @@ function drawInfoBlocks(ctx: RenderCtx, template: Template | null) {
   writeBlock("INFORMATION", template.information);
   if (template.final_reminder) {
     ensureSpace(ctx, 10);
-    doc.setFont("helvetica", "italic");
+    doc.setFont(BODY_FONT, "italic");
     doc.setFontSize(9);
     const wrapped = doc.splitTextToSize("FINAL REMINDER: " + template.final_reminder, PAGE_WIDTH - 2 * MARGIN_X) as string[];
     doc.text(wrapped, MARGIN_X, ctx.y);
@@ -120,17 +158,17 @@ function drawInfoBlocks(ctx: RenderCtx, template: Template | null) {
 function drawQuestion(ctx: RenderCtx, q: Question, i: number, imgs: Record<string, { data: string; w: number; h: number } | null>) {
   const { doc } = ctx;
   ensureSpace(ctx, 14);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BODY_FONT, "bold");
   doc.setFontSize(10);
   const num = `${i + 1}.`;
   doc.text(num, MARGIN_X, ctx.y);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BODY_FONT, "normal");
   const indent = MARGIN_X + 7;
   const wrapped = doc.splitTextToSize(q.text, PAGE_WIDTH - indent - MARGIN_X - 8) as string[];
   doc.text(wrapped, indent, ctx.y);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BODY_FONT, "bold");
   doc.text(`[${q.points}]`, PAGE_WIDTH - MARGIN_X - 2, ctx.y, { align: "right" });
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BODY_FONT, "normal");
   ctx.y += wrapped.length * 5;
 
   if (q.image_url && imgs[q.image_url]) {
@@ -196,7 +234,7 @@ function drawFooter(doc: jsPDF, total: number, schoolName: string) {
   const pages = doc.getNumberOfPages();
   for (let p = 1; p <= pages; p++) {
     doc.setPage(p);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(BODY_FONT, "normal");
     doc.setFontSize(8);
     doc.setTextColor(120);
     doc.text(schoolName, MARGIN_X, FOOTER_Y);
@@ -213,7 +251,10 @@ function formatTime(min: number): string {
 }
 
 export async function generateExamPdf(exam: Exam, template: Template | null): Promise<Blob> {
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  // compress keeps the embedded Unicode font from bloating the output.
+  const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
+  registerFonts(doc, await loadFontData());
+  doc.setFont(BODY_FONT, "normal");
 
   const allImages = [
     ...(template?.logo_url ? [template.logo_url] : []),
@@ -233,7 +274,7 @@ export async function generateExamPdf(exam: Exam, template: Template | null): Pr
     ctx.doc.addPage();
     ctx.page += 1;
     ctx.y = 20;
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BODY_FONT, "bold");
     doc.setFontSize(12);
     doc.text("Reference Material", MARGIN_X, ctx.y);
     ctx.y += 8;
