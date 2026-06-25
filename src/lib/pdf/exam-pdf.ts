@@ -93,10 +93,16 @@ function imgFormat(dataUrl: string): "PNG" | "JPEG" {
  * ------------------------------------------------------------------------- */
 
 interface Inline { text: string; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; sup?: boolean; sub?: boolean }
+type Align = "left" | "center" | "right" | "justify";
 type RichBlock =
-  | { kind: "para"; runs: Inline[] }
+  | { kind: "para"; runs: Inline[]; align: Align }
   | { kind: "list"; ordered: boolean; items: Inline[][] }
   | { kind: "table"; head: string[] | null; rows: string[][] };
+
+function readAlign(el: HTMLElement): Align {
+  const ta = (el.style?.textAlign || el.getAttribute("align") || "").toLowerCase();
+  return ta === "center" || ta === "right" || ta === "justify" ? ta : "left";
+}
 
 function collectInline(node: Node, style: Inline, out: Inline[]) {
   node.childNodes.forEach((child) => {
@@ -126,7 +132,7 @@ function parseRichBlocks(html: string): RichBlock[] {
   const blocks: RichBlock[] = [];
   let current: Inline[] = [];
   const flush = () => {
-    if (current.some((r) => r.text.trim())) blocks.push({ kind: "para", runs: current });
+    if (current.some((r) => r.text.trim())) blocks.push({ kind: "para", runs: current, align: "left" });
     current = [];
   };
   root?.childNodes.forEach((node) => {
@@ -142,7 +148,7 @@ function parseRichBlocks(html: string): RichBlock[] {
       flush();
       const runs: Inline[] = [];
       collectInline(el, tag.startsWith("h") ? { bold: true, text: "" } : { text: "" }, runs);
-      if (runs.some((r) => r.text.trim())) blocks.push({ kind: "para", runs });
+      if (runs.some((r) => r.text.trim())) blocks.push({ kind: "para", runs, align: readAlign(el) });
     } else if (tag === "ul" || tag === "ol") {
       flush();
       const items: Inline[][] = [];
@@ -178,22 +184,60 @@ function setRunFont(doc: jsPDF, style: Inline, fs: number) {
 }
 
 // Word-wrap a sequence of styled runs at the given left edge / width, advancing
-// ctx.y. Handles explicit line breaks (\n), bold/underline/strike and sup/sub.
-function drawRuns(ctx: RenderCtx, runs: Inline[], leftX: number, maxWidth: number, fontSize: number) {
+// ctx.y. Handles explicit line breaks (\n), bold/underline/strike, sup/sub and
+// paragraph alignment (left/center/right/justify).
+function drawRuns(ctx: RenderCtx, runs: Inline[], leftX: number, maxWidth: number, fontSize: number, align: Align = "left") {
   const { doc } = ctx;
   const lineHeight = fontSize * 0.5;
   type W = { text: string; style: Inline; w: number; space: boolean };
+
+  // First pass: break the runs into lines so we know each line's width (needed
+  // for center/right/justify positioning).
+  const lines: { words: W[]; width: number }[] = [];
   let line: W[] = [];
   let lineW = 0;
-
-  const trimTrailingSpace = () => {
+  const pushLine = () => {
     while (line.length && line[line.length - 1].space) { lineW -= line[line.length - 1].w; line.pop(); }
+    lines.push({ words: line, width: lineW });
+    line = [];
+    lineW = 0;
   };
-  const flushLine = () => {
-    trimTrailingSpace();
+  for (const run of runs) {
+    const segments = run.text.split("\n");
+    segments.forEach((seg, si) => {
+      if (si > 0) pushLine();
+      const tokens = seg.split(/(\s+)/).filter((s) => s.length > 0);
+      for (const tk of tokens) {
+        const fs = run.sup || run.sub ? fontSize * 0.75 : fontSize;
+        setRunFont(doc, run, fs);
+        const w = doc.getTextWidth(tk);
+        if (/^\s+$/.test(tk)) {
+          if (line.length === 0) continue;
+          line.push({ text: " ", style: run, w, space: true });
+          lineW += w;
+          continue;
+        }
+        if (lineW + w > maxWidth && line.length > 0) pushLine();
+        line.push({ text: tk, style: run, w, space: false });
+        lineW += w;
+      }
+    });
+  }
+  pushLine();
+
+  // Second pass: draw each line with the requested alignment.
+  lines.forEach((ln, idx) => {
     ensureSpace(ctx, lineHeight + 1);
+    const isLast = idx === lines.length - 1;
     let cx = leftX;
-    for (const word of line) {
+    let extraSpace = 0;
+    if (align === "center") cx = leftX + Math.max(0, (maxWidth - ln.width) / 2);
+    else if (align === "right") cx = leftX + Math.max(0, maxWidth - ln.width);
+    else if (align === "justify" && !isLast) {
+      const gaps = ln.words.filter((w) => w.space).length;
+      if (gaps > 0) extraSpace = Math.max(0, (maxWidth - ln.width) / gaps);
+    }
+    for (const word of ln.words) {
       const fs = word.style.sup || word.style.sub ? fontSize * 0.75 : fontSize;
       setRunFont(doc, word.style, fs);
       const yOff = word.style.sup ? -fontSize * 0.30 : word.style.sub ? fontSize * 0.12 : 0;
@@ -204,36 +248,10 @@ function drawRuns(ctx: RenderCtx, runs: Inline[], leftX: number, maxWidth: numbe
         doc.setDrawColor(40);
         doc.line(cx, lineY, cx + word.w, lineY);
       }
-      cx += word.w;
+      cx += word.w + (word.space ? extraSpace : 0);
     }
     ctx.y += lineHeight;
-    line = [];
-    lineW = 0;
-  };
-
-  for (const run of runs) {
-    const segments = run.text.split("\n");
-    segments.forEach((seg, si) => {
-      if (si > 0) flushLine();
-      const tokens = seg.split(/(\s+)/).filter((s) => s.length > 0);
-      for (const tk of tokens) {
-        const fs = run.sup || run.sub ? fontSize * 0.75 : fontSize;
-        setRunFont(doc, run, fs);
-        const w = doc.getTextWidth(tk);
-        const isSpace = /^\s+$/.test(tk);
-        if (isSpace) {
-          if (line.length === 0) continue;
-          line.push({ text: " ", style: run, w, space: true });
-          lineW += w;
-          continue;
-        }
-        if (lineW + w > maxWidth && line.length > 0) flushLine();
-        line.push({ text: tk, style: run, w, space: false });
-        lineW += w;
-      }
-    });
-  }
-  if (line.length) flushLine();
+  });
 }
 
 function drawList(ctx: RenderCtx, list: Extract<RichBlock, { kind: "list" }>, leftX: number, maxWidth: number, fontSize: number) {
@@ -275,7 +293,7 @@ function drawRichContent(ctx: RenderCtx, html: string, leftX: number, maxWidth: 
   const blocks = parseRichBlocks(html);
   blocks.forEach((b, i) => {
     if (i > 0) ctx.y += 1;
-    if (b.kind === "para") drawRuns(ctx, b.runs, leftX, maxWidth, fontSize);
+    if (b.kind === "para") drawRuns(ctx, b.runs, leftX, maxWidth, fontSize, b.align);
     else if (b.kind === "list") drawList(ctx, b, leftX, maxWidth, fontSize);
     else if (b.kind === "table") drawTable(ctx, b, leftX, fontSize);
   });

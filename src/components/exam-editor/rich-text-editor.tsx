@@ -4,6 +4,7 @@ import { Divider, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Tooltip
 import {
   Bold, Italic, Underline, Strikethrough, List, ListOrdered,
   Table as TableIcon, Rows, Columns, Eraser, Superscript, Subscript, Trash2, ChevronDown,
+  Undo2, Redo2, AlignLeft, AlignCenter, AlignRight, AlignJustify,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import toast from "react-hot-toast";
@@ -92,6 +93,16 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
       document.execCommand("styleWithCSS", false, "false");
     } catch { /* not supported — tags are still emitted */ }
     document.execCommand(command, false, arg);
+    emit();
+  };
+
+  // Alignment must emit a `text-align` style (which the sanitiser preserves),
+  // so run it with styleWithCSS on, then restore the tag-based default.
+  const execAlign = (command: string) => {
+    restoreSelection();
+    try { document.execCommand("styleWithCSS", false, "true"); } catch { /* unsupported */ }
+    document.execCommand(command, false);
+    try { document.execCommand("styleWithCSS", false, "false"); } catch { /* unsupported */ }
     emit();
   };
 
@@ -226,10 +237,18 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
       )}
       <div className="rounded-medium border-2 border-default-200 focus-within:border-default-400 transition-colors bg-default-100/50">
         <div className="flex flex-wrap items-center gap-0.5 p-1.5 border-b border-default-200">
+          {tbBtn(<Undo2 size={15} />, "Undo (⌘Z)", () => exec("undo"))}
+          {tbBtn(<Redo2 size={15} />, "Redo (⌘⇧Z)", () => exec("redo"))}
+          <Divider orientation="vertical" className="h-5 mx-0.5" />
           {tbBtn(<Bold size={15} />, "Bold (⌘B)", () => exec("bold"))}
           {tbBtn(<Italic size={15} />, "Italic (⌘I)", () => exec("italic"))}
           {tbBtn(<Underline size={15} />, "Underline (⌘U)", () => exec("underline"))}
           {tbBtn(<Strikethrough size={15} />, "Strikethrough", () => exec("strikeThrough"))}
+          <Divider orientation="vertical" className="h-5 mx-0.5" />
+          {tbBtn(<AlignLeft size={15} />, "Align left", () => execAlign("justifyLeft"))}
+          {tbBtn(<AlignCenter size={15} />, "Align center", () => execAlign("justifyCenter"))}
+          {tbBtn(<AlignRight size={15} />, "Align right", () => execAlign("justifyRight"))}
+          {tbBtn(<AlignJustify size={15} />, "Justify", () => execAlign("justifyFull"))}
           <Divider orientation="vertical" className="h-5 mx-0.5" />
           {tbBtn(<Superscript size={15} />, "Superscript (⌘.)", () => exec("superscript"))}
           {tbBtn(<Subscript size={15} />, "Subscript (⌘,)", () => exec("subscript"))}

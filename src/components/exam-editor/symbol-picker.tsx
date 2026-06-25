@@ -38,11 +38,19 @@ export function SymbolPicker({ onInsert }: Props) {
             startContent={<Search size={14} />}
             autoFocus
           />
-          <Tabs size="sm" selectedKey={cat} onSelectionChange={(k) => setCat(k as SymbolCategory | "all")} variant="light" classNames={{ tabList: "overflow-x-auto" }}>
-            {categories.map((c) => (
-              <Tab key={c} title={c === "all" ? "All" : CATEGORY_LABELS[c]} />
-            ))}
-          </Tabs>
+          <div className="w-full max-w-full overflow-x-auto">
+            <Tabs
+              size="sm"
+              selectedKey={cat}
+              onSelectionChange={(k) => setCat(k as SymbolCategory | "all")}
+              variant="light"
+              classNames={{ base: "w-max", tabList: "flex-nowrap", tab: "flex-shrink-0" }}
+            >
+              {categories.map((c) => (
+                <Tab key={c} title={c === "all" ? "All" : CATEGORY_LABELS[c]} />
+              ))}
+            </Tabs>
+          </div>
           <div className="max-h-72 overflow-y-auto grid grid-cols-8 gap-1">
             {filtered.map((s, i) => (
               <button

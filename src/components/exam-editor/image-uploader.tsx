@@ -188,27 +188,40 @@ export function QuestionImagesEditor({
     <div className="space-y-3">
       {value.length > 0 && (
         <div className="space-y-3">
-          {value.map((img, i) => (
-            <div key={img.url + i} className="flex items-center gap-3 p-2 rounded border border-default-200 bg-default-50 dark:bg-default-100/20">
-              <Image src={img.url} alt={`image ${i + 1}`} width={72} height={72} className="w-[72px] h-[72px] object-contain rounded border border-default-200 bg-white flex-shrink-0" unoptimized />
-              <div className="flex-1 min-w-0">
-                <Slider
-                  size="sm"
-                  label="Width"
-                  minValue={10}
-                  maxValue={100}
-                  step={5}
-                  value={img.width ?? DEFAULT_IMG_WIDTH}
-                  onChange={(v) => update(i, { width: Array.isArray(v) ? v[0] : v })}
-                  getValue={(v) => `${v}%`}
-                  className="max-w-full"
-                />
+          {value.map((img, i) => {
+            const w = img.width ?? DEFAULT_IMG_WIDTH;
+            return (
+              <div key={img.url + i} className="p-3 rounded border border-default-200 bg-default-50 dark:bg-default-100/20">
+                {/* Live preview — the box represents the question's width, the
+                    image fills the chosen percentage of it. */}
+                <div className="rounded bg-default-100 dark:bg-default-200/20 border border-default-200 p-2 mb-2 overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img.url}
+                    alt={`image ${i + 1}`}
+                    style={{ width: `${w}%`, maxHeight: 220 }}
+                    className="block rounded object-contain"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Slider
+                    size="sm"
+                    label="Width"
+                    minValue={10}
+                    maxValue={100}
+                    step={5}
+                    value={w}
+                    onChange={(v) => update(i, { width: Array.isArray(v) ? v[0] : v })}
+                    getValue={(v) => `${v}%`}
+                    className="flex-1 min-w-0"
+                  />
+                  <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => remove(i)} aria-label="Remove image" className="flex-shrink-0">
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
               </div>
-              <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => remove(i)} aria-label="Remove image" className="flex-shrink-0">
-                <Trash2 size={14} />
-              </Button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       <label className="cursor-pointer inline-block">

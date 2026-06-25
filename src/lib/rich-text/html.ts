@@ -24,21 +24,36 @@ export function isHtml(value: string): boolean {
   return HTML_TAG_RE.test(value);
 }
 
+/** Pull a safe text-align value out of a tag's raw attribute string. */
+function extractAlign(attrs: string): "" | "left" | "right" | "center" | "justify" {
+  const style = /style\s*=\s*"([^"]*)"/i.exec(attrs) ?? /style\s*=\s*'([^']*)'/i.exec(attrs);
+  if (style) {
+    const ta = /text-align\s*:\s*(left|right|center|justify)/i.exec(style[1]);
+    if (ta) return ta[1].toLowerCase() as "left" | "right" | "center" | "justify";
+  }
+  const align = /\balign\s*=\s*["']?(left|right|center|justify)\b/i.exec(attrs);
+  if (align) return align[1].toLowerCase() as "left" | "right" | "center" | "justify";
+  return "";
+}
+
 /**
- * Strip everything except the whitelisted tags and drop all attributes. Safe
- * against scripts / event handlers because attributes (incl. `on*`, `href`,
- * `style`) are removed wholesale and disallowed tags are unwrapped.
+ * Strip everything except the whitelisted tags. All attributes are dropped
+ * except a normalised `text-align` (preserved as an inline style) so paragraph
+ * alignment survives. Safe against scripts / event handlers / arbitrary styles.
  */
 export function sanitizeHtml(html: string): string {
   if (!html) return "";
   // Remove dangerous element bodies entirely.
   let s = html.replace(/<\s*(script|style|iframe|object|embed)[^>]*>[\s\S]*?<\/\s*\1\s*>/gi, "");
-  // Normalise tags: keep allowed ones (stripped of attributes), drop the rest.
-  s = s.replace(/<(\/?)\s*([a-zA-Z0-9]+)[^>]*?(\/?)>/g, (_m, slash: string, tag: string, selfClose: string) => {
+  // Normalise tags: keep allowed ones (only a safe text-align survives), drop the rest.
+  s = s.replace(/<(\/?)\s*([a-zA-Z0-9]+)([^>]*?)(\/?)>/g, (_m, slash: string, tag: string, attrs: string, selfClose: string) => {
     const t = tag.toLowerCase();
     if (!ALLOWED_TAGS.has(t)) return "";
     if (t === "br") return "<br>";
-    return `<${slash}${t}${slash ? "" : selfClose ? " /" : ""}>`;
+    if (slash) return `</${t}>`;
+    const align = extractAlign(attrs);
+    const styleAttr = align ? ` style="text-align:${align}"` : "";
+    return `<${t}${styleAttr}${selfClose ? " /" : ""}>`;
   });
   return s;
 }

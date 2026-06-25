@@ -39,9 +39,17 @@ export function FormulaPicker({ onInsert }: Props) {
             startContent={<Search size={14} />}
             autoFocus
           />
-          <Tabs size="sm" selectedKey={cat} onSelectionChange={(k) => setCat(k as Formula["category"] | "all")} variant="light">
-            {CATEGORIES.map((c) => <Tab key={c} title={LABELS[c]} />)}
-          </Tabs>
+          <div className="w-full max-w-full overflow-x-auto">
+            <Tabs
+              size="sm"
+              selectedKey={cat}
+              onSelectionChange={(k) => setCat(k as Formula["category"] | "all")}
+              variant="light"
+              classNames={{ base: "w-max", tabList: "flex-nowrap", tab: "flex-shrink-0" }}
+            >
+              {CATEGORIES.map((c) => <Tab key={c} title={LABELS[c]} />)}
+            </Tabs>
+          </div>
           <div className="max-h-72 overflow-y-auto space-y-1">
             {filtered.map((f, i) => (
               <button
