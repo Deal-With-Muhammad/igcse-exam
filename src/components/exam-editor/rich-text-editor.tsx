@@ -1,11 +1,12 @@
 "use client";
 
-import { Divider, Tooltip } from "@heroui/react";
+import { Divider, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Tooltip } from "@heroui/react";
 import {
   Bold, Italic, Underline, Strikethrough, List, ListOrdered,
-  Table as TableIcon, Rows, Columns, Eraser, Superscript, Subscript, Trash2,
+  Table as TableIcon, Rows, Columns, Eraser, Superscript, Subscript, Trash2, ChevronDown,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
+import toast from "react-hot-toast";
 import { isHtml, sanitizeHtml } from "@/lib/rich-text/html";
 import { SymbolPicker } from "./symbol-picker";
 import { FormulaPicker } from "./formula-picker";
@@ -34,17 +35,21 @@ interface Props {
  */
 export function RichTextEditor({ label, placeholder, value, onChange, isRequired, minHeight = 120 }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
-  // Track what we last emitted so external changes (not our own typing) can be
-  // pushed back into the DOM without fighting the caret on every keystroke.
-  const lastHtml = useRef<string>(value);
+  // The value we last pushed to / read from the DOM. The editor is uncontrolled:
+  // we set innerHTML imperatively (never via a render-time prop) so React never
+  // recreates the contentEditable subtree mid-edit and resets the caret. `null`
+  // forces the first sync to populate the DOM.
+  const lastHtml = useRef<string | null>(null);
   // Remember the caret/selection inside the editor so the Symbols/Formulas
-  // popovers (which steal focus) can insert at the right place.
+  // popovers and table menu (which steal focus) can act at the right place.
   const savedRange = useRef<Range | null>(null);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (value !== lastHtml.current && value !== el.innerHTML) {
+    // Only overwrite the DOM on external value changes — our own typing already
+    // updated the DOM and set lastHtml, so this is a no-op for keystrokes.
+    if (value !== lastHtml.current) {
       el.innerHTML = toEditorHtml(value);
       lastHtml.current = value;
     }
@@ -121,10 +126,13 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
     return null;
   };
 
+  const NEED_TABLE = "Click inside a table first";
+
   const addRow = () => {
+    restoreSelection();
     const table = tableFromSelection();
     const body = table?.tBodies[0];
-    if (!body) return;
+    if (!body) { toast.error(NEED_TABLE); return; }
     const cols = Math.max(1, body.rows[0]?.cells.length ?? table.rows[0]?.cells.length ?? 1);
     const tr = body.insertRow(-1);
     for (let i = 0; i < cols; i++) tr.insertCell(-1).innerHTML = "<br>";
@@ -132,8 +140,9 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
   };
 
   const addColumn = () => {
+    restoreSelection();
     const table = tableFromSelection();
-    if (!table) return;
+    if (!table) { toast.error(NEED_TABLE); return; }
     Array.from(table.rows).forEach((row) => {
       const isHead = row.parentElement?.tagName === "THEAD";
       const cell = document.createElement(isHead ? "th" : "td");
@@ -159,24 +168,27 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
   };
 
   const deleteRow = () => {
+    restoreSelection();
     const info = cellFromSelection();
-    if (!info?.table) return;
+    if (!info?.table) { toast.error(NEED_TABLE); return; }
     info.row.remove();
     if (info.table.querySelectorAll("tr").length === 0) info.table.remove();
     emit();
   };
 
   const deleteColumn = () => {
+    restoreSelection();
     const info = cellFromSelection();
-    if (!info?.table) return;
+    if (!info?.table) { toast.error(NEED_TABLE); return; }
     Array.from(info.table.rows).forEach((r) => { if (r.cells[info.colIndex]) r.deleteCell(info.colIndex); });
     if ((info.table.rows[0]?.cells.length ?? 0) === 0) info.table.remove();
     emit();
   };
 
   const deleteTable = () => {
+    restoreSelection();
     const table = tableFromSelection();
-    if (!table) return;
+    if (!table) { toast.error(NEED_TABLE); return; }
     table.remove();
     emit();
   };
@@ -225,12 +237,35 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
           {tbBtn(<List size={15} />, "Bullet list", () => exec("insertUnorderedList"))}
           {tbBtn(<ListOrdered size={15} />, "Numbered list", () => exec("insertOrderedList"))}
           <Divider orientation="vertical" className="h-5 mx-0.5" />
-          {tbBtn(<TableIcon size={15} />, "Insert table", insertTable)}
-          {tbBtn(<Rows size={15} />, "Add row", addRow)}
-          {tbBtn(<Columns size={15} />, "Add column", addColumn)}
-          {tbBtn(<Rows size={15} className="opacity-60" />, "Delete current row", deleteRow, true)}
-          {tbBtn(<Columns size={15} className="opacity-60" />, "Delete current column", deleteColumn, true)}
-          {tbBtn(<Trash2 size={15} />, "Delete table", deleteTable, true)}
+          <Dropdown placement="bottom-start">
+            <DropdownTrigger>
+              <button
+                type="button"
+                aria-label="Table"
+                className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-default-600 hover:bg-default-200 active:bg-default-300 transition-colors text-xs font-medium"
+              >
+                <TableIcon size={15} /> Table <ChevronDown size={13} />
+              </button>
+            </DropdownTrigger>
+            <DropdownMenu
+              aria-label="Table actions"
+              onAction={(key) => {
+                if (key === "insert") insertTable();
+                else if (key === "add-row") addRow();
+                else if (key === "add-col") addColumn();
+                else if (key === "del-row") deleteRow();
+                else if (key === "del-col") deleteColumn();
+                else if (key === "del-table") deleteTable();
+              }}
+            >
+              <DropdownItem key="insert" startContent={<TableIcon size={15} />}>Insert table</DropdownItem>
+              <DropdownItem key="add-row" startContent={<Rows size={15} />}>Add row</DropdownItem>
+              <DropdownItem key="add-col" startContent={<Columns size={15} />}>Add column</DropdownItem>
+              <DropdownItem key="del-row" className="text-danger" color="danger" startContent={<Rows size={15} />}>Delete row</DropdownItem>
+              <DropdownItem key="del-col" className="text-danger" color="danger" startContent={<Columns size={15} />}>Delete column</DropdownItem>
+              <DropdownItem key="del-table" className="text-danger" color="danger" startContent={<Trash2 size={15} />}>Delete table</DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
           <Divider orientation="vertical" className="h-5 mx-0.5" />
           {tbBtn(<Eraser size={15} />, "Clear formatting", () => exec("removeFormat"))}
           <div className="ml-auto flex items-center gap-1">
@@ -251,7 +286,6 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
           onKeyDown={onKeyDown}
           className="rich-content rich-editor px-3 py-2 outline-none text-sm leading-relaxed"
           style={{ minHeight }}
-          dangerouslySetInnerHTML={{ __html: toEditorHtml(value) }}
         />
       </div>
     </div>
