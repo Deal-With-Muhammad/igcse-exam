@@ -56,7 +56,11 @@ export function ExamMetaCard({ meta, onChange, templates, classes, lockClass }: 
           <Input label="Part / Paper" value={meta.part} onChange={(e) => set("part", e.target.value)} placeholder="e.g. Part 1" />
           <Input label="Level / Year (free text)" value={meta.level} onChange={(e) => set("level", e.target.value)} placeholder="e.g. Year 10" description="Shown on the PDF" />
           <Select label="PDF Template" selectedKeys={meta.template_id ? [meta.template_id] : []} onChange={(e) => set("template_id", e.target.value || null)}>
-            {templates.map((t) => <SelectItem key={t.id}>{t.name}{t.is_default ? " (default)" : ""}</SelectItem>)}
+            {templates.map((t) => (
+              <SelectItem key={t.id} textValue={`${t.name}${t.is_default ? " (default)" : ""}`}>
+                {t.name}{t.is_default ? " (default)" : ""}
+              </SelectItem>
+            ))}
           </Select>
         </div>
 

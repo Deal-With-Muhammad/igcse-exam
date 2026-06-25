@@ -9,6 +9,8 @@ export default async function ExamRegPage({ params }: { params: Promise<{ id: st
   const { data } = await supabase.from("exams").select("*").eq("id", id).single();
   if (!data) notFound();
   const exam = data as Exam;
+  // Drafts aren't takeable — a direct link should 404 until published.
+  if (exam.is_draft) notFound();
   const { data: template } = exam.template_id
     ? await supabase.from("templates").select("*").eq("id", exam.template_id).single()
     : await supabase.from("templates").select("*").eq("is_default", true).single();

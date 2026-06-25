@@ -29,7 +29,10 @@ export function ExamDetail({ exam, submissions }: Props) {
           <Button isIconOnly variant="light"><ArrowLeft size={20} /></Button>
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold truncate">{exam.title}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold truncate">{exam.title}</h1>
+            {exam.is_draft && <Chip size="sm" color="warning" variant="flat" className="flex-shrink-0">Draft</Chip>}
+          </div>
           <p className="text-xs text-default-500">Created {new Date(exam.created_at).toLocaleDateString()}</p>
         </div>
         <div className="flex gap-2">
@@ -58,6 +61,7 @@ export function ExamDetail({ exam, submissions }: Props) {
               </Button>
             </div>
             <p className="text-xs text-default-500 mt-1">Students enter this code at /take-exam</p>
+            {exam.is_draft && <p className="text-xs text-warning mt-1">This exam is a draft — the code won&apos;t work until you publish it.</p>}
           </div>
           <div>
             <h3 className="text-sm font-medium mb-2">Stats</h3>

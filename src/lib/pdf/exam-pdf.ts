@@ -377,31 +377,35 @@ function drawQuestion(ctx: RenderCtx, q: Question, i: number, imgs: Record<strin
   drawRichContent(ctx, q.text, indent, PAGE_WIDTH - indent - MARGIN_X - 10, 10);
   if (ctx.y <= startY) ctx.y = startY + 5; // empty text: still clear the number row
 
-  // Question images — one or several, flowing left-to-right and wrapping.
+  // Question images — stacked vertically (matching the on-screen layout), each
+  // sized to its chosen width (% of the content column) so it isn't tiny.
+  const contentW = PAGE_WIDTH - indent - MARGIN_X;
   const imgList = questionImages(q)
-    .map((u) => imgs[u])
-    .filter((x): x is { data: string; w: number; h: number } => !!x);
+    .map((qi) => ({ img: imgs[qi.url], width: qi.width }))
+    .filter((x) => x.img) as { img: { data: string; w: number; h: number }; width?: number }[];
   if (imgList.length) {
     ctx.y += 1;
-    let x = indent;
-    let rowH = 0;
-    const gap = 4;
-    const maxW = imgList.length > 1 ? 55 : 70;
-    const maxH = 50;
-    for (const img of imgList) {
+    for (const { img, width } of imgList) {
       const aspect = img.w / img.h;
-      let w = Math.min(maxW, aspect * maxH);
-      let h = w / aspect;
-      if (h > maxH) { h = maxH; w = h * aspect; }
-      if (x > indent && x + w > PAGE_WIDTH - MARGIN_X) { ctx.y += rowH + gap; x = indent; rowH = 0; }
-      const beforePage = ctx.page;
+      let w: number;
+      let h: number;
+      if (width) {
+        w = (Math.min(100, Math.max(10, width)) / 100) * contentW;
+        h = w / aspect;
+        const maxH = 220;
+        if (h > maxH) { h = maxH; w = h * aspect; }
+      } else {
+        // No explicit width (legacy images): render at a generous default size.
+        const maxW = contentW * 0.85;
+        const maxH = 95;
+        w = Math.min(maxW, aspect * maxH);
+        h = w / aspect;
+        if (h > maxH) { h = maxH; w = h * aspect; }
+      }
       ensureSpace(ctx, h + 4);
-      if (ctx.page !== beforePage) { x = indent; rowH = 0; }
-      doc.addImage(img.data, imgFormat(img.data), x, ctx.y, w, h);
-      x += w + gap;
-      rowH = Math.max(rowH, h);
+      doc.addImage(img.data, imgFormat(img.data), indent, ctx.y, w, h);
+      ctx.y += h + 3;
     }
-    ctx.y += rowH + 3;
   }
 
   // Rich-text rendering may leave the font bold/italic — reset before drawing
@@ -484,7 +488,7 @@ export async function generateExamPdf(exam: Exam, template: Template | null): Pr
   const allImages = [
     ...(template?.logo_url ? [template.logo_url] : []),
     ...(exam.reference_images || []),
-    ...exam.questions.flatMap((q) => questionImages(q)),
+    ...exam.questions.flatMap((q) => questionImages(q).map((img) => img.url)),
   ];
   const imgMap: Record<string, { data: string; w: number; h: number } | null> = {};
   await Promise.all(allImages.map(async (url) => { imgMap[url] = await fetchImage(url); }));

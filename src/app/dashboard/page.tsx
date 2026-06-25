@@ -8,7 +8,7 @@ export default async function DashboardPage() {
 
   let examQuery = supabase
     .from("exams")
-    .select("id, share_code, title, subject, level, curriculum, total_marks, created_at, created_by, class_id, questions")
+    .select("id, share_code, title, subject, level, curriculum, total_marks, created_at, created_by, class_id, is_draft, questions")
     .order("created_at", { ascending: false });
 
   // Teachers with class assignments only see exams pinned to any of their

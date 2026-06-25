@@ -28,9 +28,15 @@ export function QuestionRunner({ question, answer, onChange, index, total, onTim
             </h2>
             <RichText value={question.text} className="prose-exam text-default-800 dark:text-default-200" />
             {questionImages(question).length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-3">
-                {questionImages(question).map((url, k) => (
-                  <img key={url + k} src={url} alt={`question ${k + 1}`} className="rounded border border-default-200 max-h-80" />
+              <div className="mt-3 flex flex-col gap-3">
+                {questionImages(question).map((img, k) => (
+                  <img
+                    key={img.url + k}
+                    src={img.url}
+                    alt={`question ${k + 1}`}
+                    style={img.width ? { width: `${img.width}%`, maxWidth: "100%" } : undefined}
+                    className={`rounded border border-default-200 ${img.width ? "" : "max-h-80"}`}
+                  />
                 ))}
               </div>
             )}

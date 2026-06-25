@@ -1,7 +1,7 @@
 "use client";
 
-import { Button, Card, CardBody, Divider, useDisclosure } from "@heroui/react";
-import { ArrowLeft, Plus, Save, UploadCloud } from "lucide-react";
+import { Button, Card, CardBody, Chip, Divider, useDisclosure } from "@heroui/react";
+import { ArrowLeft, FileText, Plus, Save, UploadCloud } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -63,6 +63,7 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
 
   const [questions, setQuestions] = useState<Question[]>(initialExam?.questions ?? []);
   const [saving, setSaving] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const bulkModal = useDisclosure();
 
   const updateQ = (i: number, q: Question) => {
@@ -109,10 +110,16 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
     return null;
   };
 
-  const save = async () => {
-    const err = validate();
-    if (err) { toast.error(err); return; }
-    setSaving(true);
+  const save = async (asDraft: boolean) => {
+    // Drafts only need a title so work-in-progress can be saved; publishing
+    // runs the full validation.
+    if (asDraft) {
+      if (!meta.title.trim()) { toast.error("Add a title to save a draft"); return; }
+    } else {
+      const err = validate();
+      if (err) { toast.error(err); return; }
+    }
+    if (asDraft) setSavingDraft(true); else setSaving(true);
     const supabase = createClient();
     try {
       const total = calcMaxScore(questions);
@@ -130,6 +137,7 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
         max_warnings: settings.max_warnings,
         reference_images: meta.reference_images,
         total_marks: total,
+        is_draft: asDraft,
         questions: questions as unknown as Record<string, unknown>[],
       };
       if (mode === "create") {
@@ -141,15 +149,15 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
           .select("id, share_code")
           .single();
         if (error || !data) { toast.error(error?.message || "Failed to save"); return; }
-        toast.success(`Exam created — share code: ${data.share_code}`);
+        toast.success(asDraft ? "Draft saved" : `Exam published — share code: ${data.share_code}`);
         router.push(`/dashboard/exams/${data.id}`);
       } else {
         const { error } = await supabase.from("exams").update(payload).eq("id", initialExam!.id);
         if (error) { toast.error(error.message); return; }
-        toast.success("Exam updated");
+        toast.success(asDraft ? "Saved as draft" : "Exam saved");
         router.push(`/dashboard/exams/${initialExam!.id}`);
       }
-    } finally { setSaving(false); }
+    } finally { setSaving(false); setSavingDraft(false); }
   };
 
   const totalMarks = calcMaxScore(questions);
@@ -163,14 +171,22 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
           </Link>
           <h1 className="text-xl md:text-2xl font-bold truncate">{mode === "create" ? "Create Exam" : `Edit: ${meta.title || "Exam"}`}</h1>
         </div>
-        <Button color="primary" onPress={save} isLoading={saving} startContent={<Save size={16} />} className="font-semibold hidden sm:flex">
-          {mode === "create" ? "Create Exam" : "Save Changes"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {initialExam?.is_draft && <Chip size="sm" color="warning" variant="flat">Draft</Chip>}
+          <Button variant="flat" onPress={() => save(true)} isLoading={savingDraft} isDisabled={saving} startContent={<FileText size={16} />} className="hidden sm:flex">
+            Save as Draft
+          </Button>
+          <Button color="primary" onPress={() => save(false)} isLoading={saving} isDisabled={savingDraft} startContent={<Save size={16} />} className="font-semibold hidden sm:flex">
+            {mode === "create" ? "Publish" : "Save Changes"}
+          </Button>
+        </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* Stationary side panel — add questions, running totals, save.
-            Sits on the right on desktop (sticky); drops below the form on mobile. */}
+            Sits on the right on desktop (sticky); drops below the form on mobile.
+            The column stretches to full height so the sticky child has room to
+            stay pinned while the questions list scrolls. */}
         <aside className="w-full lg:w-72 lg:order-2 lg:flex-shrink-0 order-last">
           <div className="lg:sticky lg:top-4 space-y-3">
             <Card>
@@ -201,8 +217,11 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
               </CardBody>
             </Card>
 
-            <Button color="primary" onPress={save} isLoading={saving} startContent={<Save size={16} />} size="lg" className="font-semibold w-full">
-              {mode === "create" ? "Create Exam" : "Save Changes"}
+            <Button color="primary" onPress={() => save(false)} isLoading={saving} isDisabled={savingDraft} startContent={<Save size={16} />} size="lg" className="font-semibold w-full">
+              {mode === "create" ? "Publish" : "Save Changes"}
+            </Button>
+            <Button variant="flat" onPress={() => save(true)} isLoading={savingDraft} isDisabled={saving} startContent={<FileText size={16} />} className="w-full">
+              Save as Draft
             </Button>
           </div>
         </aside>

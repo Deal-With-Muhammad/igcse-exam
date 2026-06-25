@@ -62,9 +62,15 @@ export function QuestionGrade({ question, index, studentAnswer, grade, comment, 
           <p className="font-medium text-sm mb-1">Question</p>
           <RichText value={question.text} className="text-default-700 text-sm" />
           {questionImages(question).length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {questionImages(question).map((url, k) => (
-                <img key={url + k} src={url} alt="" className="max-h-48 rounded border" />
+            <div className="mt-2 flex flex-col gap-2">
+              {questionImages(question).map((img, k) => (
+                <img
+                  key={img.url + k}
+                  src={img.url}
+                  alt=""
+                  style={img.width ? { width: `${img.width}%`, maxWidth: "100%" } : undefined}
+                  className={`rounded border ${img.width ? "" : "max-h-48"}`}
+                />
               ))}
             </div>
           )}

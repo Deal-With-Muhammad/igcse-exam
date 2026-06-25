@@ -79,9 +79,15 @@ export function ExamPreview({ exam, template }: Props) {
                 <div className="flex-1">
                   <RichText value={q.text} />
                   {questionImages(q).length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {questionImages(q).map((url, k) => (
-                        <img key={url + k} src={url} alt="" className="max-h-48 rounded border" />
+                    <div className="mt-2 flex flex-col gap-2">
+                      {questionImages(q).map((img, k) => (
+                        <img
+                          key={img.url + k}
+                          src={img.url}
+                          alt=""
+                          style={img.width ? { width: `${img.width}%`, maxWidth: "100%" } : undefined}
+                          className={`rounded border ${img.width ? "" : "max-h-48"}`}
+                        />
                       ))}
                     </div>
                   )}

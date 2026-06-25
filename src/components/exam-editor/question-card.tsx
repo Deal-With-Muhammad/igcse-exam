@@ -8,7 +8,7 @@ import { QUESTION_TYPE_LABELS, QUESTION_TYPE_COLORS } from "@/lib/constants";
 import { changeQuestionType } from "@/lib/exam/factory";
 import { questionImages } from "@/lib/exam/images";
 import { RichTextEditor } from "./rich-text-editor";
-import { MultiImageUploader } from "./image-uploader";
+import { QuestionImagesEditor } from "./image-uploader";
 import { MCQEditor } from "./mcq-editor";
 import { TrueFalseEditor } from "./truefalse-editor";
 import { FillBlankEditor } from "./fillblank-editor";
@@ -132,11 +132,9 @@ export function QuestionCard({ question, index, total, onUpdate, onRemove, onMov
 
           <div>
             <p className="text-xs font-medium text-default-600 mb-1">Question images (optional)</p>
-            <MultiImageUploader
+            <QuestionImagesEditor
               value={questionImages(question)}
-              onChange={(urls) => onUpdate({ ...question, image_urls: urls, image_url: null })}
-              pathPrefix="q"
-              caption="Add one or more images — shown with the question online and on the PDF"
+              onChange={(imgs) => onUpdate({ ...question, images: imgs, image_url: null, image_urls: [] })}
             />
           </div>
 

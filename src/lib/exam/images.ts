@@ -1,12 +1,15 @@
-import type { BaseQuestion } from "@/types";
+import type { BaseQuestion, QuestionImage } from "@/types";
 
 /**
- * Combine the legacy single `image_url` with the newer `image_urls[]` into one
- * ordered, de-duplicated list. Legacy image (if any) comes first so existing
- * exams keep rendering their original image.
+ * Normalise a question's images into a single ordered list with optional
+ * sizing. Prefers the structured `images[]`, falling back to the legacy
+ * `image_urls[]` / single `image_url` so older exams keep rendering.
  */
-export function questionImages(q: Pick<BaseQuestion, "image_url" | "image_urls">): string[] {
-  const list = [...(q.image_urls ?? [])];
-  if (q.image_url && !list.includes(q.image_url)) list.unshift(q.image_url);
-  return list;
+export function questionImages(
+  q: Pick<BaseQuestion, "image_url" | "image_urls" | "images">,
+): QuestionImage[] {
+  if (q.images?.length) return q.images;
+  const urls = [...(q.image_urls ?? [])];
+  if (q.image_url && !urls.includes(q.image_url)) urls.unshift(q.image_url);
+  return urls.map((url) => ({ url }));
 }

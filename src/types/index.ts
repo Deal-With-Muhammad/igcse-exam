@@ -26,16 +26,24 @@ export type Curriculum = "igcse" | "ged" | "other";
 
 export type QuestionType = "mcq" | "truefalse" | "fillblank" | "long" | "short";
 
+export interface QuestionImage {
+  url: string;
+  /** Display width as a percentage of the available content width (10–100). */
+  width?: number;
+}
+
 export interface BaseQuestion {
   id: string;
   type: QuestionType;
   /** Rich-text HTML (bold/italic/underline/lists/tables) or plain text for legacy questions. */
   text: string;
   points: number;
-  /** Legacy single image. Kept for backward compatibility — prefer image_urls. */
+  /** Legacy single image. Kept for backward compatibility — prefer images. */
   image_url?: string | null;
-  /** Multiple images attached to the question, shown in order. */
+  /** Legacy multi-image (urls only). Kept for backward compatibility — prefer images. */
   image_urls?: string[];
+  /** Images attached to the question, shown in order, with optional sizing. */
+  images?: QuestionImage[];
   reference_images?: string[];
   /** Number of writing lines reserved on the PDF (0 = none). */
   lines_for_pdf?: number;
@@ -112,6 +120,8 @@ export interface Exam {
   terminate_on_switch: boolean;
   /** Number of focus-loss events allowed before termination (when enabled). */
   max_warnings: number;
+  /** Draft exams are hidden from students (can't be taken) until published. */
+  is_draft?: boolean;
   reference_images: string[];
   questions: Question[];
   created_by: string;

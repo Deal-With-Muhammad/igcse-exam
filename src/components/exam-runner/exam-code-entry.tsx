@@ -27,11 +27,11 @@ export function ExamCodeEntry() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("exams")
-        .select("id")
+        .select("id, is_draft")
         .eq("share_code", trimmed)
         .maybeSingle();
       if (error) { toast.error(error.message); return; }
-      if (!data) { toast.error("Exam not found — check the code"); return; }
+      if (!data || data.is_draft) { toast.error("Exam not found — check the code"); return; }
       router.push(`/take-exam/${data.id}`);
     } finally { setLoading(false); }
   };

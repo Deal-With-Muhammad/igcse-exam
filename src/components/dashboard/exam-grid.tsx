@@ -18,6 +18,7 @@ export interface ExamRow {
   created_at: string;
   created_by: string;
   class_id: string | null;
+  is_draft?: boolean;
   questions: unknown[];
 }
 
@@ -73,6 +74,7 @@ export function ExamGrid({ exams, onChange }: { exams: ExamRow[]; onChange: (e: 
               <div className="flex-1 min-w-0">
                 <h3 className="text-base font-semibold truncate">{exam.title}</h3>
                 <div className="flex flex-wrap gap-1 mt-1">
+                  {exam.is_draft && <Chip size="sm" variant="flat" color="warning">Draft</Chip>}
                   <Chip size="sm" variant="flat" color="primary">{exam.curriculum.toUpperCase()}</Chip>
                   {exam.subject && <Chip size="sm" variant="flat" color="secondary">{exam.subject}</Chip>}
                   {exam.level && <Chip size="sm" variant="flat">{exam.level}</Chip>}
@@ -97,16 +99,20 @@ export function ExamGrid({ exams, onChange }: { exams: ExamRow[]; onChange: (e: 
                   <p>{exam.questions?.length || 0} questions · {exam.total_marks || 0} marks</p>
                   <p className="mt-1">Created {new Date(exam.created_at).toLocaleDateString()}</p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="flat"
-                  color={copiedId === exam.share_code ? "success" : "primary"}
-                  startContent={copiedId === exam.share_code ? <Check size={14} /> : <Copy size={14} />}
-                  onPress={() => copyCode(exam.share_code)}
-                  className="font-mono"
-                >
-                  {exam.share_code}
-                </Button>
+                {exam.is_draft ? (
+                  <Chip size="sm" variant="flat" color="warning">Not published</Chip>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    color={copiedId === exam.share_code ? "success" : "primary"}
+                    startContent={copiedId === exam.share_code ? <Check size={14} /> : <Copy size={14} />}
+                    onPress={() => copyCode(exam.share_code)}
+                    className="font-mono"
+                  >
+                    {exam.share_code}
+                  </Button>
+                )}
               </div>
             </CardBody>
           </Card>

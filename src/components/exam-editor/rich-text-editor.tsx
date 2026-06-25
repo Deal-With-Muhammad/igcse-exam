@@ -3,7 +3,7 @@
 import { Divider, Tooltip } from "@heroui/react";
 import {
   Bold, Italic, Underline, Strikethrough, List, ListOrdered,
-  Table as TableIcon, Rows, Columns, Eraser, Superscript, Subscript,
+  Table as TableIcon, Rows, Columns, Eraser, Superscript, Subscript, Trash2,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { isHtml, sanitizeHtml } from "@/lib/rich-text/html";
@@ -143,6 +143,44 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
     emit();
   };
 
+  // Locate the table cell containing the current selection (and its row/column).
+  const cellFromSelection = () => {
+    const sel = window.getSelection();
+    let node = sel?.anchorNode as Node | null;
+    while (node && node !== ref.current) {
+      if (node instanceof HTMLTableCellElement) {
+        const row = node.parentElement as HTMLTableRowElement;
+        const table = node.closest("table");
+        return { cell: node, row, table, colIndex: Array.from(row.cells).indexOf(node) };
+      }
+      node = node.parentNode;
+    }
+    return null;
+  };
+
+  const deleteRow = () => {
+    const info = cellFromSelection();
+    if (!info?.table) return;
+    info.row.remove();
+    if (info.table.querySelectorAll("tr").length === 0) info.table.remove();
+    emit();
+  };
+
+  const deleteColumn = () => {
+    const info = cellFromSelection();
+    if (!info?.table) return;
+    Array.from(info.table.rows).forEach((r) => { if (r.cells[info.colIndex]) r.deleteCell(info.colIndex); });
+    if ((info.table.rows[0]?.cells.length ?? 0) === 0) info.table.remove();
+    emit();
+  };
+
+  const deleteTable = () => {
+    const table = tableFromSelection();
+    if (!table) return;
+    table.remove();
+    emit();
+  };
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
     if (e.key === ".") { e.preventDefault(); exec("superscript"); }
@@ -151,14 +189,16 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
 
   // Native buttons: onMouseDown preventDefault keeps focus (and the selection)
   // in the contentEditable so execCommand acts on the current text.
-  const tbBtn = (icon: React.ReactNode, title: string, onClick: () => void) => (
+  const tbBtn = (icon: React.ReactNode, title: string, onClick: () => void, danger = false) => (
     <Tooltip content={title} closeDelay={0}>
       <button
         type="button"
         aria-label={title}
         onMouseDown={(e) => e.preventDefault()}
         onClick={onClick}
-        className="inline-flex items-center justify-center w-7 h-7 rounded-md text-default-600 hover:bg-default-200 active:bg-default-300 transition-colors"
+        className={`inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+          danger ? "text-danger hover:bg-danger-100" : "text-default-600 hover:bg-default-200 active:bg-default-300"
+        }`}
       >
         {icon}
       </button>
@@ -186,8 +226,11 @@ export function RichTextEditor({ label, placeholder, value, onChange, isRequired
           {tbBtn(<ListOrdered size={15} />, "Numbered list", () => exec("insertOrderedList"))}
           <Divider orientation="vertical" className="h-5 mx-0.5" />
           {tbBtn(<TableIcon size={15} />, "Insert table", insertTable)}
-          {tbBtn(<Rows size={15} />, "Add row to table", addRow)}
-          {tbBtn(<Columns size={15} />, "Add column to table", addColumn)}
+          {tbBtn(<Rows size={15} />, "Add row", addRow)}
+          {tbBtn(<Columns size={15} />, "Add column", addColumn)}
+          {tbBtn(<Rows size={15} className="opacity-60" />, "Delete current row", deleteRow, true)}
+          {tbBtn(<Columns size={15} className="opacity-60" />, "Delete current column", deleteColumn, true)}
+          {tbBtn(<Trash2 size={15} />, "Delete table", deleteTable, true)}
           <Divider orientation="vertical" className="h-5 mx-0.5" />
           {tbBtn(<Eraser size={15} />, "Clear formatting", () => exec("removeFormat"))}
           <div className="ml-auto flex items-center gap-1">
