@@ -1,5 +1,8 @@
 import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import type { Exam, Question, Template } from "@/types";
+import { isHtml, sanitizeHtml } from "@/lib/rich-text/html";
+import { questionImages } from "@/lib/exam/images";
 
 const MARGIN_X = 18;
 const PAGE_HEIGHT = 297;
@@ -77,6 +80,207 @@ async function fetchImage(url: string): Promise<{ data: string; w: number; h: nu
   } catch { return null; }
 }
 
+function imgFormat(dataUrl: string): "PNG" | "JPEG" {
+  return /^data:image\/jpe?g/i.test(dataUrl) ? "JPEG" : "PNG";
+}
+
+/* ----------------------------------------------------------------------------
+ * Rich-text rendering
+ *
+ * Question text is HTML (bold / italic / underline / lists / tables) produced
+ * by the editor, or plain text for legacy exams. We parse it into blocks and
+ * render them onto the PDF so the printed paper matches the on-screen exam.
+ * ------------------------------------------------------------------------- */
+
+interface Inline { text: string; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; sup?: boolean; sub?: boolean }
+type RichBlock =
+  | { kind: "para"; runs: Inline[] }
+  | { kind: "list"; ordered: boolean; items: Inline[][] }
+  | { kind: "table"; head: string[] | null; rows: string[][] };
+
+function collectInline(node: Node, style: Inline, out: Inline[]) {
+  node.childNodes.forEach((child) => {
+    if (child.nodeType === 3) {
+      const t = child.textContent ?? "";
+      if (t) out.push({ ...style, text: t });
+      return;
+    }
+    if (child.nodeType !== 1) return;
+    const el = child as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    if (tag === "br") { out.push({ ...style, text: "\n" }); return; }
+    const ns: Inline = { ...style };
+    if (tag === "b" || tag === "strong") ns.bold = true;
+    if (tag === "i" || tag === "em") ns.italic = true;
+    if (tag === "u") ns.underline = true;
+    if (tag === "s" || tag === "strike") ns.strike = true;
+    if (tag === "sup") ns.sup = true;
+    if (tag === "sub") ns.sub = true;
+    collectInline(el, ns, out);
+  });
+}
+
+function parseRichBlocks(html: string): RichBlock[] {
+  const doc = new DOMParser().parseFromString(`<div id="r">${sanitizeHtml(html)}</div>`, "text/html");
+  const root = doc.getElementById("r");
+  const blocks: RichBlock[] = [];
+  let current: Inline[] = [];
+  const flush = () => {
+    if (current.some((r) => r.text.trim())) blocks.push({ kind: "para", runs: current });
+    current = [];
+  };
+  root?.childNodes.forEach((node) => {
+    if (node.nodeType === 3) {
+      const t = node.textContent ?? "";
+      if (t.trim()) current.push({ text: t });
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    if (["p", "div", "h1", "h2", "h3"].includes(tag)) {
+      flush();
+      const runs: Inline[] = [];
+      collectInline(el, tag.startsWith("h") ? { bold: true, text: "" } : { text: "" }, runs);
+      if (runs.some((r) => r.text.trim())) blocks.push({ kind: "para", runs });
+    } else if (tag === "ul" || tag === "ol") {
+      flush();
+      const items: Inline[][] = [];
+      el.querySelectorAll(":scope > li").forEach((li) => {
+        const runs: Inline[] = [];
+        collectInline(li, { text: "" }, runs);
+        items.push(runs);
+      });
+      if (items.length) blocks.push({ kind: "list", ordered: tag === "ol", items });
+    } else if (tag === "table") {
+      flush();
+      let head: string[] | null = null;
+      const rows: string[][] = [];
+      el.querySelectorAll("tr").forEach((tr) => {
+        const cells = Array.from(tr.children).map((c) => (c.textContent ?? "").replace(/\s+/g, " ").trim());
+        if (cells.length === 0) return;
+        const isHead = Array.from(tr.children).some((c) => c.tagName.toLowerCase() === "th");
+        if (isHead && head === null) head = cells;
+        else rows.push(cells);
+      });
+      blocks.push({ kind: "table", head, rows });
+    } else {
+      collectInline(el, { text: "" }, current);
+    }
+  });
+  flush();
+  return blocks;
+}
+
+function setRunFont(doc: jsPDF, style: Inline, fs: number) {
+  doc.setFont(BODY_FONT, style.bold ? "bold" : style.italic ? "italic" : "normal");
+  doc.setFontSize(fs);
+}
+
+// Word-wrap a sequence of styled runs at the given left edge / width, advancing
+// ctx.y. Handles explicit line breaks (\n), bold/underline/strike and sup/sub.
+function drawRuns(ctx: RenderCtx, runs: Inline[], leftX: number, maxWidth: number, fontSize: number) {
+  const { doc } = ctx;
+  const lineHeight = fontSize * 0.5;
+  type W = { text: string; style: Inline; w: number; space: boolean };
+  let line: W[] = [];
+  let lineW = 0;
+
+  const trimTrailingSpace = () => {
+    while (line.length && line[line.length - 1].space) { lineW -= line[line.length - 1].w; line.pop(); }
+  };
+  const flushLine = () => {
+    trimTrailingSpace();
+    ensureSpace(ctx, lineHeight + 1);
+    let cx = leftX;
+    for (const word of line) {
+      const fs = word.style.sup || word.style.sub ? fontSize * 0.75 : fontSize;
+      setRunFont(doc, word.style, fs);
+      const yOff = word.style.sup ? -fontSize * 0.30 : word.style.sub ? fontSize * 0.12 : 0;
+      doc.text(word.text, cx, ctx.y + yOff);
+      if (word.style.underline || word.style.strike) {
+        const lineY = ctx.y + yOff + (word.style.strike ? -fontSize * 0.18 : fontSize * 0.14);
+        doc.setLineWidth(0.2);
+        doc.setDrawColor(40);
+        doc.line(cx, lineY, cx + word.w, lineY);
+      }
+      cx += word.w;
+    }
+    ctx.y += lineHeight;
+    line = [];
+    lineW = 0;
+  };
+
+  for (const run of runs) {
+    const segments = run.text.split("\n");
+    segments.forEach((seg, si) => {
+      if (si > 0) flushLine();
+      const tokens = seg.split(/(\s+)/).filter((s) => s.length > 0);
+      for (const tk of tokens) {
+        const fs = run.sup || run.sub ? fontSize * 0.75 : fontSize;
+        setRunFont(doc, run, fs);
+        const w = doc.getTextWidth(tk);
+        const isSpace = /^\s+$/.test(tk);
+        if (isSpace) {
+          if (line.length === 0) continue;
+          line.push({ text: " ", style: run, w, space: true });
+          lineW += w;
+          continue;
+        }
+        if (lineW + w > maxWidth && line.length > 0) flushLine();
+        line.push({ text: tk, style: run, w, space: false });
+        lineW += w;
+      }
+    });
+  }
+  if (line.length) flushLine();
+}
+
+function drawList(ctx: RenderCtx, list: Extract<RichBlock, { kind: "list" }>, leftX: number, maxWidth: number, fontSize: number) {
+  const { doc } = ctx;
+  list.items.forEach((runs, idx) => {
+    const marker = list.ordered ? `${idx + 1}.` : "•";
+    setRunFont(doc, { text: "" }, fontSize);
+    const markerW = doc.getTextWidth(marker) + 1.5;
+    ensureSpace(ctx, fontSize * 0.5 + 1);
+    setRunFont(doc, { text: "" }, fontSize);
+    doc.text(marker, leftX, ctx.y);
+    drawRuns(ctx, runs.length ? runs : [{ text: "" }], leftX + markerW, maxWidth - markerW, fontSize);
+  });
+}
+
+function drawTable(ctx: RenderCtx, table: Extract<RichBlock, { kind: "table" }>, leftX: number, fontSize: number) {
+  const { doc } = ctx;
+  ensureSpace(ctx, 14);
+  autoTable(doc, {
+    startY: ctx.y,
+    margin: { left: leftX, right: MARGIN_X },
+    head: table.head ? [table.head] : undefined,
+    body: table.rows.length ? table.rows : [[""]],
+    theme: "grid",
+    tableWidth: "wrap",
+    styles: { font: BODY_FONT, fontStyle: "normal", fontSize: Math.max(8, fontSize - 1), cellPadding: 1.6, lineColor: 150, lineWidth: 0.2, textColor: 20, overflow: "linebreak" },
+    headStyles: { font: BODY_FONT, fontStyle: "bold", fillColor: [235, 235, 235], textColor: 20, lineColor: 150, lineWidth: 0.2 },
+  });
+  const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
+  ctx.page = doc.getNumberOfPages();
+  ctx.y = (finalY ?? ctx.y) + 3;
+}
+
+function drawRichContent(ctx: RenderCtx, html: string, leftX: number, maxWidth: number, fontSize: number) {
+  if (!isHtml(html)) {
+    drawRuns(ctx, [{ text: html }], leftX, maxWidth, fontSize);
+    return;
+  }
+  const blocks = parseRichBlocks(html);
+  blocks.forEach((b, i) => {
+    if (i > 0) ctx.y += 1;
+    if (b.kind === "para") drawRuns(ctx, b.runs, leftX, maxWidth, fontSize);
+    else if (b.kind === "list") drawList(ctx, b, leftX, maxWidth, fontSize);
+    else if (b.kind === "table") drawTable(ctx, b, leftX, fontSize);
+  });
+}
+
 function drawHeader(ctx: RenderCtx, exam: Exam, template: Template | null, logo: { data: string; w: number; h: number } | null) {
   const { doc } = ctx;
   let y = 18;
@@ -85,7 +289,7 @@ function drawHeader(ctx: RenderCtx, exam: Exam, template: Template | null, logo:
     const aspect = logo.w / logo.h;
     const h = 22;
     const w = h * aspect;
-    doc.addImage(logo.data, "PNG", MARGIN_X, y, w, h);
+    doc.addImage(logo.data, imgFormat(logo.data), MARGIN_X, y, w, h);
   }
 
   const textX = logo ? MARGIN_X + 28 : MARGIN_X;
@@ -157,32 +361,53 @@ function drawInfoBlocks(ctx: RenderCtx, template: Template | null) {
 
 function drawQuestion(ctx: RenderCtx, q: Question, i: number, imgs: Record<string, { data: string; w: number; h: number } | null>) {
   const { doc } = ctx;
-  ensureSpace(ctx, 14);
+  ensureSpace(ctx, 16);
+  const num = `${i + 1}.`;
+  const indent = MARGIN_X + 7;
+  const startY = ctx.y;
+
   doc.setFont(BODY_FONT, "bold");
   doc.setFontSize(10);
-  const num = `${i + 1}.`;
-  doc.text(num, MARGIN_X, ctx.y);
+  doc.text(num, MARGIN_X, startY);
+  doc.text(`[${q.points}]`, PAGE_WIDTH - MARGIN_X - 2, startY, { align: "right" });
   doc.setFont(BODY_FONT, "normal");
-  const indent = MARGIN_X + 7;
-  const wrapped = doc.splitTextToSize(q.text, PAGE_WIDTH - indent - MARGIN_X - 8) as string[];
-  doc.text(wrapped, indent, ctx.y);
-  doc.setFont(BODY_FONT, "bold");
-  doc.text(`[${q.points}]`, PAGE_WIDTH - MARGIN_X - 2, ctx.y, { align: "right" });
-  doc.setFont(BODY_FONT, "normal");
-  ctx.y += wrapped.length * 5;
 
-  if (q.image_url && imgs[q.image_url]) {
-    const img = imgs[q.image_url]!;
-    const maxW = 70;
+  // Question text: rich HTML (bold/lists/tables/…) or plain text, rendered so
+  // the printed paper matches the on-screen exam.
+  drawRichContent(ctx, q.text, indent, PAGE_WIDTH - indent - MARGIN_X - 10, 10);
+  if (ctx.y <= startY) ctx.y = startY + 5; // empty text: still clear the number row
+
+  // Question images — one or several, flowing left-to-right and wrapping.
+  const imgList = questionImages(q)
+    .map((u) => imgs[u])
+    .filter((x): x is { data: string; w: number; h: number } => !!x);
+  if (imgList.length) {
+    ctx.y += 1;
+    let x = indent;
+    let rowH = 0;
+    const gap = 4;
+    const maxW = imgList.length > 1 ? 55 : 70;
     const maxH = 50;
-    const aspect = img.w / img.h;
-    let w = Math.min(maxW, aspect * maxH);
-    let h = w / aspect;
-    if (h > maxH) { h = maxH; w = h * aspect; }
-    ensureSpace(ctx, h + 4);
-    doc.addImage(img.data, "PNG", indent, ctx.y, w, h);
-    ctx.y += h + 3;
+    for (const img of imgList) {
+      const aspect = img.w / img.h;
+      let w = Math.min(maxW, aspect * maxH);
+      let h = w / aspect;
+      if (h > maxH) { h = maxH; w = h * aspect; }
+      if (x > indent && x + w > PAGE_WIDTH - MARGIN_X) { ctx.y += rowH + gap; x = indent; rowH = 0; }
+      const beforePage = ctx.page;
+      ensureSpace(ctx, h + 4);
+      if (ctx.page !== beforePage) { x = indent; rowH = 0; }
+      doc.addImage(img.data, imgFormat(img.data), x, ctx.y, w, h);
+      x += w + gap;
+      rowH = Math.max(rowH, h);
+    }
+    ctx.y += rowH + 3;
   }
+
+  // Rich-text rendering may leave the font bold/italic — reset before drawing
+  // options, answer prompts and lines.
+  doc.setFont(BODY_FONT, "normal");
+  doc.setFontSize(10);
 
   const drawAnswerLines = (count: number) => {
     for (let l = 0; l < count; l++) {
@@ -259,7 +484,7 @@ export async function generateExamPdf(exam: Exam, template: Template | null): Pr
   const allImages = [
     ...(template?.logo_url ? [template.logo_url] : []),
     ...(exam.reference_images || []),
-    ...exam.questions.map((q) => q.image_url).filter((x): x is string => !!x),
+    ...exam.questions.flatMap((q) => questionImages(q)),
   ];
   const imgMap: Record<string, { data: string; w: number; h: number } | null> = {};
   await Promise.all(allImages.map(async (url) => { imgMap[url] = await fetchImage(url); }));
@@ -288,7 +513,7 @@ export async function generateExamPdf(exam: Exam, template: Template | null): Pr
       let h = w / aspect;
       if (h > maxH) { h = maxH; w = h * aspect; }
       ensureSpace(ctx, h + 6);
-      doc.addImage(img.data, "PNG", MARGIN_X, ctx.y, w, h);
+      doc.addImage(img.data, imgFormat(img.data), MARGIN_X, ctx.y, w, h);
       ctx.y += h + 6;
     }
   }

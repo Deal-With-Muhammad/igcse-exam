@@ -18,6 +18,70 @@ body {
   line-height: 1.65;
 }
 
+/* Rendering of rich-text question content (shared by editor, runner,
+   preview, grader and the on-screen exam). */
+.rich-content {
+  word-break: break-word;
+}
+.rich-content p {
+  margin: 0 0 0.4em;
+}
+.rich-content p:last-child {
+  margin-bottom: 0;
+}
+.rich-content ul,
+.rich-content ol {
+  margin: 0.3em 0 0.3em 1.4em;
+  padding: 0;
+}
+.rich-content ul {
+  list-style: disc;
+}
+.rich-content ol {
+  list-style: decimal;
+}
+.rich-content li {
+  margin: 0.1em 0;
+}
+.rich-content sup {
+  font-size: 0.75em;
+  vertical-align: super;
+}
+.rich-content sub {
+  font-size: 0.75em;
+  vertical-align: sub;
+}
+.rich-content table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  width: auto;
+}
+.rich-content th,
+.rich-content td {
+  border: 1px solid rgba(120, 120, 120, 0.5);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+  min-width: 2.5rem;
+}
+.rich-content th {
+  font-weight: 600;
+  background: rgba(120, 120, 120, 0.1);
+}
+
+/* contentEditable editor surface */
+.rich-editor:empty:before {
+  content: attr(data-placeholder);
+  color: hsl(var(--heroui-default-400));
+  pointer-events: none;
+}
+.rich-editor:focus {
+  outline: none;
+}
+.rich-editor table {
+  cursor: text;
+}
+
 @media print {
   .no-print {
     display: none !important;

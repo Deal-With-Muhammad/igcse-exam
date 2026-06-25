@@ -5,6 +5,8 @@ import { Check, Edit, X } from "lucide-react";
 import type { Answer, Question } from "@/types";
 import { QUESTION_TYPE_LABELS } from "@/lib/constants";
 import { isAnswerCorrect, isAutoGradedType } from "@/lib/exam/grading";
+import { questionImages } from "@/lib/exam/images";
+import { RichText } from "@/components/exam-editor/rich-text";
 
 interface Props {
   question: Question;
@@ -58,8 +60,14 @@ export function QuestionGrade({ question, index, studentAnswer, grade, comment, 
       <CardBody className="space-y-4">
         <div>
           <p className="font-medium text-sm mb-1">Question</p>
-          <p className="text-default-700 whitespace-pre-wrap text-sm">{question.text}</p>
-          {question.image_url && <img src={question.image_url} alt="" className="mt-2 max-h-48 rounded border" />}
+          <RichText value={question.text} className="text-default-700 text-sm" />
+          {questionImages(question).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {questionImages(question).map((url, k) => (
+                <img key={url + k} src={url} alt="" className="max-h-48 rounded border" />
+              ))}
+            </div>
+          )}
         </div>
 
         <div>

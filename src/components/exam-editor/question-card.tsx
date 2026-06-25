@@ -1,13 +1,14 @@
 "use client";
 
 import { Button, Card, CardBody, Chip, Input, Select, SelectItem, Switch, Tooltip } from "@heroui/react";
-import { ChevronDown, ChevronUp, Trash2, ArrowUp, ArrowDown, Clock, AlignJustify } from "lucide-react";
+import { ChevronDown, ChevronUp, Trash2, ArrowUp, ArrowDown, Clock, AlignJustify, GripVertical } from "lucide-react";
 import { useState } from "react";
 import type { Question, QuestionType } from "@/types";
 import { QUESTION_TYPE_LABELS, QUESTION_TYPE_COLORS } from "@/lib/constants";
 import { changeQuestionType } from "@/lib/exam/factory";
-import { SmartTextarea } from "./smart-textarea";
-import { SingleImageUploader } from "./image-uploader";
+import { questionImages } from "@/lib/exam/images";
+import { RichTextEditor } from "./rich-text-editor";
+import { MultiImageUploader } from "./image-uploader";
 import { MCQEditor } from "./mcq-editor";
 import { TrueFalseEditor } from "./truefalse-editor";
 import { FillBlankEditor } from "./fillblank-editor";
@@ -21,12 +22,14 @@ interface Props {
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  /** Arms native drag-and-drop on the parent wrapper when the grip is grabbed. */
+  onDragHandleDown?: () => void;
 }
 
 const DEFAULT_LINES: Record<QuestionType, number> = { mcq: 0, truefalse: 0, fillblank: 0, short: 3, long: 8 };
 const ALLOWS_LINES: QuestionType[] = ["short", "long", "fillblank"];
 
-export function QuestionCard({ question, index, total, onUpdate, onRemove, onMoveUp, onMoveDown }: Props) {
+export function QuestionCard({ question, index, total, onUpdate, onRemove, onMoveUp, onMoveDown, onDragHandleDown }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [showTimer, setShowTimer] = useState(question.time_limit_seconds != null);
 
@@ -39,8 +42,19 @@ export function QuestionCard({ question, index, total, onUpdate, onRemove, onMov
 
   return (
     <Card>
-      <div className="flex items-center justify-between px-4 py-2 bg-default-50 dark:bg-default-100/30 rounded-t-large">
+      <div className="flex items-center justify-between px-2 sm:px-4 py-2 bg-default-50 dark:bg-default-100/30 rounded-t-large">
         <div className="flex items-center gap-2 min-w-0">
+          <Tooltip content="Drag to reorder" closeDelay={0}>
+            <button
+              type="button"
+              aria-label="Drag to reorder"
+              onMouseDown={onDragHandleDown}
+              onTouchStart={onDragHandleDown}
+              className="cursor-grab active:cursor-grabbing text-default-400 hover:text-default-600 touch-none"
+            >
+              <GripVertical size={16} />
+            </button>
+          </Tooltip>
           <span className="font-semibold text-sm">Q{index + 1}</span>
           <Chip size="sm" color={color} variant="flat">{QUESTION_TYPE_LABELS[question.type]}</Chip>
           <span className="text-xs text-default-500 hidden sm:inline">{question.points} pt{question.points !== 1 ? "s" : ""}</span>
@@ -108,18 +122,22 @@ export function QuestionCard({ question, index, total, onUpdate, onRemove, onMov
             )}
           </div>
 
-          <SmartTextarea
+          <RichTextEditor
             label="Question text"
-            placeholder="Type your question. Use the Symbols / Formulas buttons to insert special characters."
+            placeholder="Type your question. Use the toolbar for bold, lists, tables, symbols & formulas."
             value={question.text}
             onChange={(v) => setField("text", v as never)}
-            minRows={3}
             isRequired
           />
 
           <div>
-            <p className="text-xs font-medium text-default-600 mb-1">Question image (optional)</p>
-            <SingleImageUploader value={question.image_url ?? null} onChange={(url) => setField("image_url", url as never)} />
+            <p className="text-xs font-medium text-default-600 mb-1">Question images (optional)</p>
+            <MultiImageUploader
+              value={questionImages(question)}
+              onChange={(urls) => onUpdate({ ...question, image_urls: urls, image_url: null })}
+              pathPrefix="q"
+              caption="Add one or more images — shown with the question online and on the PDF"
+            />
           </div>
 
           {question.type === "mcq" && <MCQEditor question={question} onUpdate={onUpdate} />}

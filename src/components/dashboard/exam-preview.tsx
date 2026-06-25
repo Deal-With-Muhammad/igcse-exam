@@ -5,6 +5,8 @@ import { ArrowLeft, FileDown } from "lucide-react";
 import Link from "next/link";
 import type { Exam, Template } from "@/types";
 import { QUESTION_TYPE_LABELS } from "@/lib/constants";
+import { questionImages } from "@/lib/exam/images";
+import { RichText } from "@/components/exam-editor/rich-text";
 
 interface Props {
   exam: Exam;
@@ -75,8 +77,14 @@ export function ExamPreview({ exam, template }: Props) {
               <div className="flex items-start gap-2 mb-1">
                 <span className="font-bold">{i + 1}.</span>
                 <div className="flex-1">
-                  <p className="whitespace-pre-wrap">{q.text}</p>
-                  {q.image_url && <img src={q.image_url} alt="" className="mt-2 max-h-48 rounded border" />}
+                  <RichText value={q.text} />
+                  {questionImages(q).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {questionImages(q).map((url, k) => (
+                        <img key={url + k} src={url} alt="" className="max-h-48 rounded border" />
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <Chip size="sm" variant="flat" className="ml-auto flex-shrink-0">[{q.points}]</Chip>
               </div>

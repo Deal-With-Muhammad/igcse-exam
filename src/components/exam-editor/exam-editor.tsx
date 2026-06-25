@@ -1,7 +1,7 @@
 "use client";
 
-import { Button, Card, useDisclosure } from "@heroui/react";
-import { ArrowLeft, FileDown, Plus, Save, UploadCloud } from "lucide-react";
+import { Button, Card, CardBody, Divider, useDisclosure } from "@heroui/react";
+import { ArrowLeft, Plus, Save, UploadCloud } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -9,6 +9,8 @@ import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/client";
 import { calcMaxScore } from "@/lib/exam/grading";
 import { makeQuestion } from "@/lib/exam/factory";
+import { questionImages } from "@/lib/exam/images";
+import { htmlToPlainText } from "@/lib/rich-text/html";
 import { generateShareCode } from "@/lib/share-code";
 import type { Class, Exam, Profile, Question, QuestionType, Template } from "@/types";
 import { ExamMetaCard, type ExamMeta } from "./exam-meta-card";
@@ -73,6 +75,21 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
     [arr[i], arr[j]] = [arr[j], arr[i]];
     setQuestions(arr);
   };
+  const reorder = (from: number, to: number) => {
+    if (from === to) return;
+    setQuestions((arr) => {
+      const next = [...arr];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+  // Native drag-and-drop state: `armed` is the card whose grip was grabbed
+  // (only that wrapper becomes draggable), `dragIndex`/`overIndex` track the
+  // active drag for the drop indicator.
+  const [armed, setArmed] = useState<number | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
   const addQ = (t: QuestionType) => setQuestions((q) => [...q, makeQuestion(t)]);
   const onBulkImport = (qs: Question[]) => setQuestions((cur) => [...cur, ...qs]);
 
@@ -82,7 +99,7 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
     if (questions.length === 0) return "Add at least one question";
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      if (!q.text.trim() && !q.image_url) return `Question ${i + 1} needs text or an image`;
+      if (!htmlToPlainText(q.text).trim() && questionImages(q).length === 0) return `Question ${i + 1} needs text or an image`;
       if (q.type === "mcq") {
         const empty = q.options.filter((o) => !o.trim()).length;
         if (empty > 0) return `Question ${i + 1} has empty options`;
@@ -135,8 +152,10 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
     } finally { setSaving(false); }
   };
 
+  const totalMarks = calcMaxScore(questions);
+
   return (
-    <div className="container mx-auto p-4 md:p-6 max-w-5xl">
+    <div className="container mx-auto p-4 md:p-6 max-w-6xl">
       <div className="flex items-center justify-between mb-6 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Link href={mode === "edit" ? `/dashboard/exams/${initialExam!.id}` : "/dashboard"}>
@@ -144,50 +163,86 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
           </Link>
           <h1 className="text-xl md:text-2xl font-bold truncate">{mode === "create" ? "Create Exam" : `Edit: ${meta.title || "Exam"}`}</h1>
         </div>
-        <Button color="primary" onPress={save} isLoading={saving} startContent={<Save size={16} />} size="lg" className="font-semibold">
+        <Button color="primary" onPress={save} isLoading={saving} startContent={<Save size={16} />} className="font-semibold hidden sm:flex">
           {mode === "create" ? "Create Exam" : "Save Changes"}
         </Button>
       </div>
 
-      <div className="space-y-4 mb-6">
-        <ExamMetaCard meta={meta} onChange={setMeta} templates={templates} classes={selectableClasses} lockClass={teacherLocked} />
-        <ExamSettingsCard settings={settings} onChange={setSettings} />
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* Stationary side panel — add questions, running totals, save.
+            Sits on the right on desktop (sticky); drops below the form on mobile. */}
+        <aside className="w-full lg:w-72 lg:order-2 lg:flex-shrink-0 order-last">
+          <div className="lg:sticky lg:top-4 space-y-3">
+            <Card>
+              <CardBody className="p-4">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-default-500">Total marks</span>
+                  <span className="text-2xl font-bold text-primary">{totalMarks}</span>
+                </div>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-sm text-default-500">Questions</span>
+                  <span className="text-lg font-semibold">{questions.length}</span>
+                </div>
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardBody className="p-3 space-y-2">
+                <p className="text-xs font-semibold text-default-500 px-1">ADD QUESTION</p>
+                <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
+                  <Button color="primary" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("mcq")} className="justify-start">Multiple Choice</Button>
+                  <Button color="success" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("truefalse")} className="justify-start">True / False</Button>
+                  <Button color="warning" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("fillblank")} className="justify-start">Fill in Blank</Button>
+                  <Button color="secondary" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("short")} className="justify-start">Short Answer</Button>
+                  <Button color="default" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("long")} className="justify-start">Long Answer</Button>
+                </div>
+                <Divider className="my-1" />
+                <Button variant="flat" startContent={<UploadCloud size={16} />} onPress={bulkModal.onOpen} className="w-full justify-start">Bulk Import</Button>
+              </CardBody>
+            </Card>
+
+            <Button color="primary" onPress={save} isLoading={saving} startContent={<Save size={16} />} size="lg" className="font-semibold w-full">
+              {mode === "create" ? "Create Exam" : "Save Changes"}
+            </Button>
+          </div>
+        </aside>
+
+        {/* Main column — exam details, settings, questions. */}
+        <div className="flex-1 min-w-0 w-full lg:order-1 space-y-4">
+          <ExamMetaCard meta={meta} onChange={setMeta} templates={templates} classes={selectableClasses} lockClass={teacherLocked} />
+          <ExamSettingsCard settings={settings} onChange={setSettings} />
+
+          <h2 className="text-lg font-semibold pt-1">Questions ({questions.length})</h2>
+
+          {questions.length === 0 ? (
+            <Card className="text-center p-8"><p className="text-default-500">No questions yet — add one from the panel or bulk-import to get started</p></Card>
+          ) : (
+            <div className="space-y-3">
+              {questions.map((q, i) => (
+                <div
+                  key={q.id}
+                  draggable={armed === i}
+                  onDragStart={(e) => { setDragIndex(i); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", String(i)); } catch { /* some browsers */ } }}
+                  onDragOver={(e) => { if (dragIndex === null) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overIndex !== i) setOverIndex(i); }}
+                  onDrop={(e) => { e.preventDefault(); if (dragIndex !== null) reorder(dragIndex, i); setDragIndex(null); setOverIndex(null); setArmed(null); }}
+                  onDragEnd={() => { setDragIndex(null); setOverIndex(null); setArmed(null); }}
+                  onMouseUp={() => { if (dragIndex === null) setArmed(null); }}
+                  className={[
+                    "transition-all",
+                    dragIndex === i ? "opacity-50" : "",
+                    overIndex === i && dragIndex !== null && dragIndex !== i ? "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-large" : "",
+                  ].join(" ")}
+                >
+                  <QuestionCard question={q} index={i} total={questions.length}
+                    onUpdate={(nq) => updateQ(i, nq)} onRemove={() => removeQ(i)}
+                    onMoveUp={() => move(i, -1)} onMoveDown={() => move(i, 1)}
+                    onDragHandleDown={() => setArmed(i)} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-
-      <div className="flex flex-wrap justify-between items-center mb-3 gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">Questions ({questions.length})</h2>
-          <p className="text-xs text-default-500">Total marks: {calcMaxScore(questions)}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="flat" startContent={<UploadCloud size={16} />} onPress={bulkModal.onOpen}>Bulk Import</Button>
-          <Button color="primary" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("mcq")}>+ MCQ</Button>
-          <Button color="success" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("truefalse")}>+ T/F</Button>
-          <Button color="warning" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("fillblank")}>+ Fill</Button>
-          <Button color="secondary" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("short")}>+ Short</Button>
-          <Button color="default" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("long")}>+ Long</Button>
-        </div>
-      </div>
-
-      {questions.length === 0 ? (
-        <Card className="text-center p-8"><p className="text-default-500">No questions yet — add or bulk-import to get started</p></Card>
-      ) : (
-        <div className="space-y-3">
-          {questions.map((q, i) => (
-            <QuestionCard key={q.id} question={q} index={i} total={questions.length}
-              onUpdate={(nq) => updateQ(i, nq)} onRemove={() => removeQ(i)}
-              onMoveUp={() => move(i, -1)} onMoveDown={() => move(i, 1)} />
-          ))}
-        </div>
-      )}
-
-      {mode === "edit" && initialExam && (
-        <div className="mt-6 flex flex-wrap justify-end gap-2">
-          <Link href={`/dashboard/exams/${initialExam.id}/pdf`}>
-            <Button variant="flat" startContent={<FileDown size={16} />}>Export PDF</Button>
-          </Link>
-        </div>
-      )}
 
       <BulkImportModal isOpen={bulkModal.isOpen} onClose={bulkModal.onClose} onImport={onBulkImport} />
     </div>

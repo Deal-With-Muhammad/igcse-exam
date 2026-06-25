@@ -66,7 +66,17 @@ export function SingleImageUploader({ value, onChange, label = "Image", small }:
   );
 }
 
-export function MultiImageUploader({ value, onChange }: { value: string[]; onChange: (urls: string[]) => void }) {
+export function MultiImageUploader({
+  value,
+  onChange,
+  caption = "Reference images appear at the top of the exam paper",
+  pathPrefix = "ref",
+}: {
+  value: string[];
+  onChange: (urls: string[]) => void;
+  caption?: string;
+  pathPrefix?: string;
+}) {
   const [uploading, setUploading] = useState(false);
 
   const upload = async (files: FileList) => {
@@ -75,7 +85,7 @@ export function MultiImageUploader({ value, onChange }: { value: string[]; onCha
       const supabase = createClient();
       const urls: string[] = [];
       for (const file of Array.from(files)) {
-        const path = `ref/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+        const path = `${pathPrefix}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
         const { error } = await supabase.storage.from("question-images").upload(path, file, { upsert: true });
         if (error) { toast.error(error.message); continue; }
         const { data } = supabase.storage.from("question-images").getPublicUrl(path);
@@ -118,7 +128,7 @@ export function MultiImageUploader({ value, onChange }: { value: string[]; onCha
           </div>
         </label>
       </div>
-      <p className="text-xs text-default-500 mt-2">Reference images appear at the top of the exam paper</p>
+      {caption && <p className="text-xs text-default-500 mt-2">{caption}</p>}
     </div>
   );
 }

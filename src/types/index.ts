@@ -29,9 +29,13 @@ export type QuestionType = "mcq" | "truefalse" | "fillblank" | "long" | "short";
 export interface BaseQuestion {
   id: string;
   type: QuestionType;
+  /** Rich-text HTML (bold/italic/underline/lists/tables) or plain text for legacy questions. */
   text: string;
   points: number;
+  /** Legacy single image. Kept for backward compatibility — prefer image_urls. */
   image_url?: string | null;
+  /** Multiple images attached to the question, shown in order. */
+  image_urls?: string[];
   reference_images?: string[];
   /** Number of writing lines reserved on the PDF (0 = none). */
   lines_for_pdf?: number;
