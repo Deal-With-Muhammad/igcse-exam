@@ -299,7 +299,7 @@ function drawRichContent(ctx: RenderCtx, html: string, leftX: number, maxWidth: 
   });
 }
 
-function drawHeader(ctx: RenderCtx, exam: Exam, template: Template | null, logo: { data: string; w: number; h: number } | null) {
+function drawHeader(ctx: RenderCtx, exam: Exam, template: Template | null, logo: { data: string; w: number; h: number } | null, className: string) {
   const { doc } = ctx;
   let y = 18;
 
@@ -334,8 +334,9 @@ function drawHeader(ctx: RenderCtx, exam: Exam, template: Template | null, logo:
   doc.text(`Time: ${exam.time_limit_minutes != null ? formatTime(exam.time_limit_minutes) : "—"}`, MARGIN_X + 120, row1Y);
   doc.text(`Total Marks: ${exam.total_marks}`, MARGIN_X + 160, row1Y);
   ctx.y += 6;
-  doc.text("Name: ____________________________", MARGIN_X, ctx.y);
-  doc.text(`Class: ${exam.level || "_______"}`, MARGIN_X + 120, ctx.y);
+  doc.text("Name: __________________", MARGIN_X, ctx.y);
+  doc.text(`Class: ${className || "_______"}`, MARGIN_X + 90, ctx.y);
+  doc.text(`Level: ${exam.level || "_______"}`, MARGIN_X + 140, ctx.y);
   ctx.y += 6;
   doc.text("Campus: __________________________", MARGIN_X, ctx.y);
   doc.text("Day & Date: ______________________", MARGIN_X + 90, ctx.y);
@@ -497,7 +498,7 @@ function formatTime(min: number): string {
   return m === 0 ? `${h}:00 hr` : `${h}:${String(m).padStart(2, "0")} hr`;
 }
 
-export async function generateExamPdf(exam: Exam, template: Template | null): Promise<Blob> {
+export async function generateExamPdf(exam: Exam, template: Template | null, className = ""): Promise<Blob> {
   // compress keeps the embedded Unicode font from bloating the output.
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   registerFonts(doc, await loadFontData());
@@ -514,7 +515,7 @@ export async function generateExamPdf(exam: Exam, template: Template | null): Pr
   const logo = template?.logo_url ? imgMap[template.logo_url] : null;
   const ctx: RenderCtx = { doc, y: 20, page: 1 };
 
-  drawHeader(ctx, exam, template, logo);
+  drawHeader(ctx, exam, template, logo, className);
   drawInfoBlocks(ctx, template);
 
   if (exam.reference_images.length > 0) {

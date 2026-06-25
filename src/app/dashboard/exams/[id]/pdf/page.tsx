@@ -9,8 +9,11 @@ export default async function PdfPage({ params }: { params: Promise<{ id: string
   const { data: exam } = await supabase.from("exams").select("*").eq("id", id).single();
   if (!exam) notFound();
   const e = exam as Exam;
-  const { data: template } = e.template_id
-    ? await supabase.from("templates").select("*").eq("id", e.template_id).single()
-    : await supabase.from("templates").select("*").eq("is_default", true).single();
-  return <PdfExportClient exam={e} template={template as Template | null} />;
+  const [{ data: template }, { data: cls }] = await Promise.all([
+    e.template_id
+      ? supabase.from("templates").select("*").eq("id", e.template_id).single()
+      : supabase.from("templates").select("*").eq("is_default", true).single(),
+    e.class_id ? supabase.from("classes").select("name").eq("id", e.class_id).single() : Promise.resolve({ data: null }),
+  ]);
+  return <PdfExportClient exam={e} template={template as Template | null} className={(cls as { name: string } | null)?.name ?? ""} />;
 }

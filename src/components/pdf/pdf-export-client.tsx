@@ -11,16 +11,17 @@ import { generateExamPdf } from "@/lib/pdf/exam-pdf";
 interface Props {
   exam: Exam;
   template: Template | null;
+  className?: string;
 }
 
-export function PdfExportClient({ exam, template }: Props) {
+export function PdfExportClient({ exam, template, className }: Props) {
   const [useTemplate, setUseTemplate] = useState(true);
   const [generating, setGenerating] = useState(false);
 
   const download = async () => {
     setGenerating(true);
     try {
-      const blob = await generateExamPdf(exam, useTemplate ? template : null);
+      const blob = await generateExamPdf(exam, useTemplate ? template : null, className);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

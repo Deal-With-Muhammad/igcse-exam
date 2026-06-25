@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Card, CardBody, CardHeader, Divider, Input, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, Pencil, X } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/client";
@@ -99,7 +99,6 @@ export function ClassesClient({ classes: initial }: { classes: Class[] }) {
                         size="sm"
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
-                        onBlur={() => commitEdit(c)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") commitEdit(c);
                           if (e.key === "Escape") setEditingId(null);
@@ -112,12 +111,19 @@ export function ClassesClient({ classes: initial }: { classes: Class[] }) {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button isIconOnly size="sm" variant="light" onPress={() => move(i, -1)} isDisabled={i === 0}><ArrowUp size={14} /></Button>
-                      <Button isIconOnly size="sm" variant="light" onPress={() => move(i, 1)} isDisabled={i === classes.length - 1}><ArrowDown size={14} /></Button>
-                      {editingId === c.id && (
-                        <Button isIconOnly size="sm" variant="flat" color="primary" onPress={() => commitEdit(c)}><Save size={14} /></Button>
+                      {editingId === c.id ? (
+                        <>
+                          <Button isIconOnly size="sm" variant="flat" color="primary" onPress={() => commitEdit(c)} aria-label="Save"><Save size={14} /></Button>
+                          <Button isIconOnly size="sm" variant="light" onPress={() => setEditingId(null)} aria-label="Cancel"><X size={14} /></Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button isIconOnly size="sm" variant="light" onPress={() => move(i, -1)} isDisabled={i === 0} aria-label="Move up"><ArrowUp size={14} /></Button>
+                          <Button isIconOnly size="sm" variant="light" onPress={() => move(i, 1)} isDisabled={i === classes.length - 1} aria-label="Move down"><ArrowDown size={14} /></Button>
+                          <Button isIconOnly size="sm" variant="flat" onPress={() => startEdit(c)} aria-label="Edit"><Pencil size={14} /></Button>
+                          <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => remove(c)} aria-label="Delete"><Trash2 size={14} /></Button>
+                        </>
                       )}
-                      <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => remove(c)}><Trash2 size={14} /></Button>
                     </div>
                   </TableCell>
                 </TableRow>

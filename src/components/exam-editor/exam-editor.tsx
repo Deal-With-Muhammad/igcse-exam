@@ -12,7 +12,7 @@ import { makeQuestion } from "@/lib/exam/factory";
 import { questionImages } from "@/lib/exam/images";
 import { htmlToPlainText } from "@/lib/rich-text/html";
 import { generateShareCode } from "@/lib/share-code";
-import type { Class, Exam, Profile, Question, QuestionType, Template } from "@/types";
+import type { Class, Exam, Profile, Question, QuestionType, Subject, Template } from "@/types";
 import { ExamMetaCard, type ExamMeta } from "./exam-meta-card";
 import { ExamSettingsCard, type ExamSettings } from "./exam-settings-card";
 import { QuestionCard } from "./question-card";
@@ -24,12 +24,13 @@ interface Props {
   initialExam?: Exam;
   templates: Template[];
   classes: Class[];
+  subjects: Subject[];
   me: Profile;
   /** Class ids the signed-in teacher is assigned to (empty for admins/unassigned). */
   myClassIds: string[];
 }
 
-export function ExamEditor({ mode, initialExam, templates, classes, me, myClassIds }: Props) {
+export function ExamEditor({ mode, initialExam, templates, classes, subjects, me, myClassIds }: Props) {
   const router = useRouter();
   const defaultTemplate = templates.find((t) => t.is_default) || templates[0] || null;
   const isTeacher = me.role === "teacher";
@@ -231,7 +232,7 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
 
         {/* Main column — exam details, settings, questions. */}
         <div className="flex-1 min-w-0 w-full lg:order-1 space-y-4">
-          <ExamMetaCard meta={meta} onChange={setMeta} templates={templates} classes={selectableClasses} lockClass={teacherLocked} />
+          <ExamMetaCard meta={meta} onChange={setMeta} templates={templates} classes={selectableClasses} subjects={subjects} lockClass={teacherLocked} />
           <ExamSettingsCard settings={settings} onChange={setSettings} />
 
           <h2 className="text-lg font-semibold pt-1">Questions ({questions.length})</h2>

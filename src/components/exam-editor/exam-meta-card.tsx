@@ -1,8 +1,8 @@
 "use client";
 
 import { Card, CardBody, CardHeader, Divider, Input, Select, SelectItem, Autocomplete, AutocompleteItem } from "@heroui/react";
-import { CURRICULA, SUBJECTS } from "@/lib/constants";
-import type { Class, Curriculum, Template } from "@/types";
+import { CURRICULA } from "@/lib/constants";
+import type { Class, Curriculum, Subject, Template } from "@/types";
 import { MultiImageUploader } from "./image-uploader";
 
 export interface ExamMeta {
@@ -21,11 +21,19 @@ interface Props {
   onChange: (m: ExamMeta) => void;
   templates: Template[];
   classes: Class[];
+  subjects: Subject[];
   lockClass?: boolean;
 }
 
-export function ExamMetaCard({ meta, onChange, templates, classes, lockClass }: Props) {
+export function ExamMetaCard({ meta, onChange, templates, classes, subjects, lockClass }: Props) {
   const set = <K extends keyof ExamMeta>(k: K, v: ExamMeta[K]) => onChange({ ...meta, [k]: v });
+
+  // Offer the managed subjects, but always include the exam's existing subject
+  // so editing a legacy/custom value never blanks the field.
+  const subjectNames = subjects.map((s) => s.name);
+  const subjectOptions = meta.subject && !subjectNames.includes(meta.subject)
+    ? [meta.subject, ...subjectNames]
+    : subjectNames;
 
   return (
     <Card>
@@ -39,7 +47,7 @@ export function ExamMetaCard({ meta, onChange, templates, classes, lockClass }: 
             {CURRICULA.map((c) => <SelectItem key={c.value}>{c.label}</SelectItem>)}
           </Select>
           <Autocomplete label="Subject" selectedKey={meta.subject} onSelectionChange={(k) => set("subject", String(k ?? ""))} onInputChange={(v) => set("subject", v)} allowsCustomValue isRequired>
-            {SUBJECTS.map((s) => <AutocompleteItem key={s}>{s}</AutocompleteItem>)}
+            {subjectOptions.map((name) => <AutocompleteItem key={name}>{name}</AutocompleteItem>)}
           </Autocomplete>
           <Select
             label="Class"
