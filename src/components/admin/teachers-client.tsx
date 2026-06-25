@@ -3,7 +3,7 @@
 import { Button, Card, CardBody, Chip, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow, useDisclosure } from "@heroui/react";
 import { Plus, ShieldCheck, GraduationCap, Trash2, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Class, Profile, TeacherClass } from "@/types";
+import type { Class, Profile, Subject, TeacherClass, TeacherSubject } from "@/types";
 import { TeacherCreateModal } from "./teacher-create-modal";
 import { TeacherEditModal } from "./teacher-edit-modal";
 import { TeacherDeleteModal } from "./teacher-delete-modal";
@@ -12,8 +12,10 @@ import { createClient } from "@/lib/supabase/client";
 export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
   const [profiles, setProfiles] = useState(initial);
   const [classes, setClasses] = useState<Class[]>([]);
-  // teacher id -> the class ids they're assigned to
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  // teacher id -> the class / subject ids they're assigned to
   const [assignments, setAssignments] = useState<Record<string, string[]>>({});
+  const [subjectAssignments, setSubjectAssignments] = useState<Record<string, string[]>>({});
   const create = useDisclosure();
   const edit = useDisclosure();
   const del = useDisclosure();
@@ -25,6 +27,9 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
     supabase.from("classes").select("*").order("sort_order").then(({ data }) => {
       setClasses((data ?? []) as Class[]);
     });
+    supabase.from("subjects").select("*").order("sort_order").then(({ data }) => {
+      setSubjects((data ?? []) as Subject[]);
+    });
     supabase.from("teacher_classes").select("teacher_id, class_id").then(({ data }) => {
       const map: Record<string, string[]> = {};
       for (const row of (data ?? []) as TeacherClass[]) {
@@ -32,21 +37,36 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
       }
       setAssignments(map);
     });
+    supabase.from("teacher_subjects").select("teacher_id, subject_id").then(({ data }) => {
+      const map: Record<string, string[]> = {};
+      for (const row of (data ?? []) as TeacherSubject[]) {
+        (map[row.teacher_id] ??= []).push(row.subject_id);
+      }
+      setSubjectAssignments(map);
+    });
   }, []);
 
   const classNameById = (id: string) => classes.find((c) => c.id === id)?.name ?? id;
+  const subjectNameById = (id: string) => subjects.find((s) => s.id === id)?.name ?? id;
 
-  const onCreated = (p: Profile, classIds: string[]) => {
+  const onCreated = (p: Profile, classIds: string[], subjectIds: string[]) => {
     setProfiles((arr) => [p, ...arr]);
     setAssignments((m) => ({ ...m, [p.id]: classIds }));
+    setSubjectAssignments((m) => ({ ...m, [p.id]: subjectIds }));
   };
-  const onUpdated = (p: Profile, classIds: string[]) => {
+  const onUpdated = (p: Profile, classIds: string[], subjectIds: string[]) => {
     setProfiles((arr) => arr.map((x) => (x.id === p.id ? p : x)));
     setAssignments((m) => ({ ...m, [p.id]: classIds }));
+    setSubjectAssignments((m) => ({ ...m, [p.id]: subjectIds }));
   };
   const onDeleted = (id: string) => {
     setProfiles((arr) => arr.filter((p) => p.id !== id));
     setAssignments((m) => {
+      const next = { ...m };
+      delete next[id];
+      return next;
+    });
+    setSubjectAssignments((m) => {
       const next = { ...m };
       delete next[id];
       return next;
@@ -61,6 +81,19 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
       <div className="flex flex-wrap gap-1">
         {ids.map((id) => (
           <Chip key={id} size="sm" variant="flat">{classNameById(id)}</Chip>
+        ))}
+      </div>
+    );
+  };
+
+  const renderSubjects = (p: Profile) => {
+    if (p.role === "admin") return <span className="text-sm text-default-500">All</span>;
+    const ids = subjectAssignments[p.id] ?? [];
+    if (ids.length === 0) return <span className="text-sm text-default-400">—</span>;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {ids.map((id) => (
+          <Chip key={id} size="sm" variant="flat" color="secondary">{subjectNameById(id)}</Chip>
         ))}
       </div>
     );
@@ -86,6 +119,7 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
               <TableColumn>EMAIL</TableColumn>
               <TableColumn>ROLE</TableColumn>
               <TableColumn>CLASSES</TableColumn>
+              <TableColumn>SUBJECTS</TableColumn>
               <TableColumn>JOINED</TableColumn>
               <TableColumn>ACTIONS</TableColumn>
             </TableHeader>
@@ -100,6 +134,7 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
                     </Chip>
                   </TableCell>
                   <TableCell>{renderClasses(p)}</TableCell>
+                  <TableCell>{renderSubjects(p)}</TableCell>
                   <TableCell>{new Date(p.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
@@ -124,7 +159,9 @@ export function TeachersClient({ profiles: initial }: { profiles: Profile[] }) {
         onClose={edit.onClose}
         profile={toEdit}
         classes={classes}
+        subjects={subjects}
         initialClassIds={toEdit ? assignments[toEdit.id] ?? [] : []}
+        initialSubjectIds={toEdit ? subjectAssignments[toEdit.id] ?? [] : []}
         onUpdated={onUpdated}
       />
       <TeacherDeleteModal isOpen={del.isOpen} onClose={del.onClose} profile={toDelete} onDeleted={onDeleted} />

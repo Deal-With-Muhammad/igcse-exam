@@ -16,9 +16,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
   const finalRole = role === "admin" ? "admin" : "teacher";
-  // Admins implicitly see every class, so class assignments only apply to teachers.
+  // Admins implicitly see everything, so class/subject assignments only apply to teachers.
   const classIds: string[] = finalRole === "teacher" && Array.isArray(body.class_ids)
     ? body.class_ids.filter((c: unknown): c is string => typeof c === "string" && !!c)
+    : [];
+  const subjectIds: string[] = finalRole === "teacher" && Array.isArray(body.subject_ids)
+    ? body.subject_ids.filter((s: unknown): s is string => typeof s === "string" && !!s)
     : [];
 
   const admin = createAdminClient();
@@ -57,5 +60,15 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ profile, class_ids: classIds });
+  if (subjectIds.length > 0) {
+    const { error: tsErr } = await admin
+      .from("teacher_subjects")
+      .insert(subjectIds.map((subject_id) => ({ teacher_id: created.user!.id, subject_id })));
+    if (tsErr) {
+      await admin.auth.admin.deleteUser(created.user.id);
+      return NextResponse.json({ error: tsErr.message }, { status: 400 });
+    }
+  }
+
+  return NextResponse.json({ profile, class_ids: classIds, subject_ids: subjectIds });
 }

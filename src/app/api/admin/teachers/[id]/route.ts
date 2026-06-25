@@ -62,9 +62,32 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
+  // Replace subject assignments if provided. Admins keep none (they see all).
+  if (Array.isArray(body.subject_ids)) {
+    const { data: current } = await admin.from("profiles").select("role").eq("id", id).single();
+    const role = finalRole ?? current?.role;
+    const subjectIds: string[] = role === "admin"
+      ? []
+      : body.subject_ids.filter((s: unknown): s is string => typeof s === "string" && !!s);
+
+    const { error: delErr } = await admin.from("teacher_subjects").delete().eq("teacher_id", id);
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 400 });
+    if (subjectIds.length > 0) {
+      const { error: insErr } = await admin
+        .from("teacher_subjects")
+        .insert(subjectIds.map((subject_id) => ({ teacher_id: id, subject_id })));
+      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 400 });
+    }
+  }
+
   const { data: profile } = await admin.from("profiles").select("*").eq("id", id).single();
   const { data: tc } = await admin.from("teacher_classes").select("class_id").eq("teacher_id", id);
-  return NextResponse.json({ profile, class_ids: (tc ?? []).map((r) => r.class_id) });
+  const { data: ts } = await admin.from("teacher_subjects").select("subject_id").eq("teacher_id", id);
+  return NextResponse.json({
+    profile,
+    class_ids: (tc ?? []).map((r) => r.class_id),
+    subject_ids: (ts ?? []).map((r) => r.subject_id),
+  });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {

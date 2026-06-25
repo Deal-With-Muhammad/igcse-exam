@@ -22,6 +22,20 @@ export interface TeacherClass {
   created_at: string;
 }
 
+export interface Subject {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
+/** Many-to-many link: which subjects a teacher is assigned to. */
+export interface TeacherSubject {
+  teacher_id: string;
+  subject_id: string;
+  created_at: string;
+}
+
 export type Curriculum = "igcse" | "ged" | "other";
 
 export type QuestionType = "mcq" | "truefalse" | "fillblank" | "long" | "short";
