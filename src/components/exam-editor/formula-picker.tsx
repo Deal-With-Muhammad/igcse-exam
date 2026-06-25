@@ -45,7 +45,7 @@ export function FormulaPicker({ onInsert }: Props) {
               selectedKey={cat}
               onSelectionChange={(k) => setCat(k as Formula["category"] | "all")}
               variant="light"
-              classNames={{ base: "w-max", tabList: "flex-nowrap", tab: "flex-shrink-0" }}
+              classNames={{ base: "w-max", tab: "w-auto flex-none" }}
             >
               {CATEGORIES.map((c) => <Tab key={c} title={LABELS[c]} />)}
             </Tabs>

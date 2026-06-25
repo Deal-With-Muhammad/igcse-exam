@@ -44,7 +44,7 @@ export function SymbolPicker({ onInsert }: Props) {
               selectedKey={cat}
               onSelectionChange={(k) => setCat(k as SymbolCategory | "all")}
               variant="light"
-              classNames={{ base: "w-max", tabList: "flex-nowrap", tab: "flex-shrink-0" }}
+              classNames={{ base: "w-max", tab: "w-auto flex-none" }}
             >
               {categories.map((c) => (
                 <Tab key={c} title={c === "all" ? "All" : CATEGORY_LABELS[c]} />
