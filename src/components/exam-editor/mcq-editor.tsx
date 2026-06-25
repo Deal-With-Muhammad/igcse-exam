@@ -2,7 +2,9 @@
 
 import { Button } from "@heroui/react";
 import { Plus, X, Check } from "lucide-react";
+import toast from "react-hot-toast";
 import { SmartTextarea } from "./smart-textarea";
+import { splitOptionLines } from "@/lib/exam/smart-parse";
 import type { MCQQuestion, Question } from "@/types";
 
 interface Props {
@@ -15,6 +17,23 @@ export function MCQEditor({ question, onUpdate }: Props) {
     const opts = [...question.options];
     opts[i] = v;
     onUpdate({ ...question, options: opts });
+  };
+
+  // Smart paste: when a teacher pastes several options at once, split them and
+  // fill A, B, C, D… automatically instead of dumping everything into one box.
+  const onPasteOptions = (start: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    const parsed = splitOptionLines(text);
+    if (parsed.length < 2) return; // single option — let the normal paste happen
+    e.preventDefault();
+    const opts = [...question.options];
+    for (let k = 0; k < parsed.length && start + k < 8; k++) {
+      const idx = start + k;
+      if (idx < opts.length) opts[idx] = parsed[k];
+      else opts.push(parsed[k]);
+    }
+    onUpdate({ ...question, options: opts.slice(0, 8) });
+    toast.success(`Filled ${Math.min(parsed.length, 8 - start)} options`);
   };
 
   const addOption = () => {
@@ -37,7 +56,7 @@ export function MCQEditor({ question, onUpdate }: Props) {
   return (
     <div className="space-y-2">
       <div className="flex justify-between items-center">
-        <p className="text-sm font-medium">Options <span className="text-default-400 font-normal">— click ✓ to mark the correct one</span></p>
+        <p className="text-sm font-medium">Options <span className="text-default-400 font-normal">— click ✓ to mark the correct one · paste a list to auto-fill</span></p>
         <Button size="sm" variant="flat" startContent={<Plus size={14} />} onPress={addOption} isDisabled={question.options.length >= 8}>
           Add option
         </Button>
@@ -63,6 +82,7 @@ export function MCQEditor({ question, onUpdate }: Props) {
             minRows={1}
             className="flex-1"
             showTools={false}
+            onPaste={(e) => onPasteOptions(i, e)}
           />
           {question.options.length > 2 && (
             <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => removeOption(i)} className="mt-2" aria-label="Remove option">

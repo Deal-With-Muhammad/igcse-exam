@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Card, CardBody, Chip, Divider, useDisclosure } from "@heroui/react";
-import { ArrowLeft, FileText, Plus, Save, UploadCloud } from "lucide-react";
+import { ArrowLeft, FileText, FileUp, Plus, Save, UploadCloud } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -17,6 +17,7 @@ import { ExamMetaCard, type ExamMeta } from "./exam-meta-card";
 import { ExamSettingsCard, type ExamSettings } from "./exam-settings-card";
 import { QuestionCard } from "./question-card";
 import { BulkImportModal } from "./bulk-import-modal";
+import { PdfImportModal } from "./pdf-import-modal";
 
 interface Props {
   mode: "create" | "edit";
@@ -65,6 +66,7 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
   const [saving, setSaving] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const bulkModal = useDisclosure();
+  const pdfModal = useDisclosure();
 
   const updateQ = (i: number, q: Question) => {
     const arr = [...questions]; arr[i] = q; setQuestions(arr);
@@ -213,7 +215,8 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
                   <Button color="default" variant="flat" startContent={<Plus size={16} />} onPress={() => addQ("long")} className="justify-start">Long Answer</Button>
                 </div>
                 <Divider className="my-1" />
-                <Button variant="flat" startContent={<UploadCloud size={16} />} onPress={bulkModal.onOpen} className="w-full justify-start">Bulk Import</Button>
+                <Button variant="flat" startContent={<FileUp size={16} />} onPress={pdfModal.onOpen} className="w-full justify-start">Import from PDF</Button>
+                <Button variant="flat" startContent={<UploadCloud size={16} />} onPress={bulkModal.onOpen} className="w-full justify-start">Bulk Import (text)</Button>
               </CardBody>
             </Card>
 
@@ -264,6 +267,7 @@ export function ExamEditor({ mode, initialExam, templates, classes, me, myClassI
       </div>
 
       <BulkImportModal isOpen={bulkModal.isOpen} onClose={bulkModal.onClose} onImport={onBulkImport} />
+      <PdfImportModal isOpen={pdfModal.isOpen} onClose={pdfModal.onClose} onImport={onBulkImport} />
     </div>
   );
 }

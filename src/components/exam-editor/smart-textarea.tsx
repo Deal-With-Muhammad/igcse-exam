@@ -19,10 +19,11 @@ interface Props {
   isRequired?: boolean;
   className?: string;
   showTools?: boolean;
+  onPaste?: React.ClipboardEventHandler<HTMLInputElement>;
 }
 
 export const SmartTextarea = forwardRef<SmartTextareaHandle, Props>(function SmartTextarea(
-  { label, placeholder, value, onChange, minRows = 3, isRequired, className, showTools = true },
+  { label, placeholder, value, onChange, minRows = 3, isRequired, className, showTools = true, onPaste },
   ref,
 ) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -90,6 +91,7 @@ export const SmartTextarea = forwardRef<SmartTextareaHandle, Props>(function Sma
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
         minRows={minRows}
         isRequired={isRequired}
       />
